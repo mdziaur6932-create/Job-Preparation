@@ -1,0 +1,6 @@
+{
+  "name": "প্রস্তুতি AI — Personal AI Job Preparation & Examination System",
+  "description": "Personal AI Job Preparation & Examination System featuring PDF Book Library with OCR, RAG Smart Reader, AI Question Lab & Bank, Timed Exam Center with Negative Marking, AI Evaluation, Current GK, Study Planner, Mistake Notebook, and Performance Analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
