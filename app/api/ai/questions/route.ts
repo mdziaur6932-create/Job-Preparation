@@ -1,6 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ThinkingLevel, Type } from '@google/genai';
-import { GEMINI_MODEL, getGeminiClient } from '@/src/lib/gemini';
+import {
+  DEFAULT_AI_TIMEOUT_MS,
+  GEMINI_MODEL,
+  generateWithRetry,
+  mapAiErrorToHttpResponse,
+  parseAiJson,
+  parseJsonBody,
+} from '@/src/lib/gemini';
 import { deduplicateQuestions } from '@/src/lib/rag-engine';
 
 interface SourceChunk {
@@ -13,22 +20,30 @@ interface SourceChunk {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await parseJsonBody<Record<string, unknown>>(req);
     const chunks: SourceChunk[] = Array.isArray(body.chunks)
-      ? body.chunks.slice(0, 8)
+      ? (body.chunks.slice(0, 8) as SourceChunk[])
       : [];
     const existingStems: string[] = Array.isArray(body.existingStems)
-      ? body.existingStems.slice(0, 60)
+      ? body.existingStems.slice(0, 60).map(String)
       : [];
-    const questionType: 'MCQ' | 'Written' | 'Short' = body.questionType || 'MCQ';
-    const difficulty: 'Easy' | 'Medium' | 'Hard' = body.difficulty || 'Medium';
-    const count = Math.min(10, Math.max(1, Number(body.count || 4)));
+    const rawType = String(body.questionType || 'MCQ');
+    const questionType: 'MCQ' | 'Written' | 'Short' =
+      rawType === 'Written' || rawType === 'Short' ? rawType : 'MCQ';
+    const rawDiff = String(body.difficulty || 'Medium');
+    const difficulty: 'Easy' | 'Medium' | 'Hard' =
+      rawDiff === 'Easy' || rawDiff === 'Hard' ? rawDiff : 'Medium';
+    const count = Math.min(10, Math.max(1, Number(body.count || 4) || 4));
     const subject: string = String(body.subject || 'সাধারণ জ্ঞান');
     const topicHint: string = String(body.topicHint || '').trim();
 
     if (chunks.length === 0) {
       return NextResponse.json(
-        { error: 'প্রশ্ন তৈরির জন্য অন্তত একটি বই বা অধ্যায় নির্বাচন করুন।' },
+        {
+          error: 'প্রশ্ন তৈরির জন্য অন্তত একটি বই বা অধ্যায় নির্বাচন করুন।',
+          code: 'INVALID_REQUEST',
+          retryable: false,
+        },
         { status: 400 }
       );
     }
@@ -45,10 +60,10 @@ export async function POST(req: NextRequest) {
         ? `\nনিচের বিদ্যমান প্রশ্নগুলোর পুনরাবৃত্তি করবে না:\n- ${existingStems.join('\n- ')}`
         : '';
 
-    const ai = getGeminiClient();
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: `নিচের Knowledge Base অংশগুলো বিশ্লেষণ করে বাংলাদেশের চাকরি পরীক্ষার (BCS, Bank, Govt) মানসম্মত ${count}টি নতুন "${questionType}" প্রশ্ন তৈরি করো।
+    const response = await generateWithRetry(
+      {
+        model: GEMINI_MODEL,
+        contents: `নিচের Knowledge Base অংশগুলো বিশ্লেষণ করে বাংলাদেশের চাকরি পরীক্ষার (BCS, Bank, Govt) মানসম্মত ${count}টি নতুন "${questionType}" প্রশ্ন তৈরি করো।
 বিষয়: ${subject}
 কঠিনতার মাত্রা: ${difficulty}
 ${topicHint ? `বিশেষ নির্দেশনা/টপিক: ${topicHint}` : ''}
@@ -61,46 +76,53 @@ ${avoidList}
 
 উৎসসমূহ:
 ${contextText}`,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        responseMimeType: 'application/json',
-        responseSchema: {
-          type: Type.ARRAY,
-          items: {
-            type: Type.OBJECT,
-            properties: {
-              stem: { type: Type.STRING },
-              options: {
-                type: Type.ARRAY,
-                items: { type: Type.STRING },
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          responseMimeType: 'application/json',
+          responseSchema: {
+            type: Type.ARRAY,
+            items: {
+              type: Type.OBJECT,
+              properties: {
+                stem: { type: Type.STRING },
+                options: {
+                  type: Type.ARRAY,
+                  items: { type: Type.STRING },
+                },
+                correctOptionIndex: { type: Type.INTEGER },
+                modelAnswer: { type: Type.STRING },
+                explanation: { type: Type.STRING },
+                bookTitle: { type: Type.STRING },
+                chapter: { type: Type.STRING },
+                pageNumber: { type: Type.INTEGER },
+                importanceScore: { type: Type.INTEGER },
               },
-              correctOptionIndex: { type: Type.INTEGER },
-              modelAnswer: { type: Type.STRING },
-              explanation: { type: Type.STRING },
-              bookTitle: { type: Type.STRING },
-              chapter: { type: Type.STRING },
-              pageNumber: { type: Type.INTEGER },
-              importanceScore: { type: Type.INTEGER },
+              required: [
+                'stem',
+                'options',
+                'modelAnswer',
+                'explanation',
+                'bookTitle',
+                'chapter',
+                'pageNumber',
+                'importanceScore',
+              ],
             },
-            required: [
-              'stem',
-              'options',
-              'modelAnswer',
-              'explanation',
-              'bookTitle',
-              'chapter',
-              'pageNumber',
-              'importanceScore',
-            ],
           },
         },
       },
-    });
+      {
+        timeoutMs: DEFAULT_AI_TIMEOUT_MS,
+        signal: req.signal,
+      }
+    );
 
-    const parsed = JSON.parse((response.text ?? '[]').trim());
-    const rawItems = Array.isArray(parsed) ? parsed : [];
+    const rawItems = parseAiJson<Array<Record<string, unknown>>>(
+      response.text,
+      'array'
+    );
 
-    const normalized = rawItems.map((item: Record<string, unknown>) => {
+    const normalized = rawItems.map((item) => {
       const matchedChunk =
         chunks.find((c) => c.bookTitle === item.bookTitle) ?? chunks[0];
       const options =
@@ -147,15 +169,10 @@ ${contextText}`,
       filteredDuplicates: normalized.length - uniqueQuestions.length,
     });
   } catch (error) {
-    console.error('POST /api/ai/questions failed:', error);
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'AI প্রশ্ন তৈরি করতে সমস্যা হয়েছে।',
-      },
-      { status: 500 }
+    return mapAiErrorToHttpResponse(
+      error,
+      'POST /api/ai/questions',
+      'AI প্রশ্ন তৈরি করতে সমস্যা হয়েছে।'
     );
   }
 }

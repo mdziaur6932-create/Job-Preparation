@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ThinkingLevel } from '@google/genai';
-import { GEMINI_MODEL, getGeminiClient } from '@/src/lib/gemini';
+import {
+  DEFAULT_AI_TIMEOUT_MS,
+  GEMINI_MODEL,
+  generateWithRetry,
+  mapAiErrorToHttpResponse,
+  parseJsonBody,
+} from '@/src/lib/gemini';
 
 interface ChunkPayload {
   bookTitle: string;
@@ -11,17 +17,24 @@ interface ChunkPayload {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await parseJsonBody<Record<string, unknown>>(req);
+    const rawMode = String(body.mode || 'summary');
     const mode: 'summary' | 'facts' | 'explain' | 'compare' =
-      body.mode || 'summary';
+      rawMode === 'facts' || rawMode === 'explain' || rawMode === 'compare'
+        ? rawMode
+        : 'summary';
     const topic: string = String(body.topic || '').trim();
     const chunks: ChunkPayload[] = Array.isArray(body.chunks)
-      ? body.chunks.slice(0, 8)
+      ? (body.chunks.slice(0, 8) as ChunkPayload[])
       : [];
 
     if (chunks.length === 0) {
       return NextResponse.json(
-        { error: 'বিশ্লেষণের জন্য অন্তত একটি অধ্যায় বা বইয়ের অংশ নির্বাচন করুন।' },
+        {
+          error: 'বিশ্লেষণের জন্য অন্তত একটি অধ্যায় বা বইয়ের অংশ নির্বাচন করুন।',
+          code: 'INVALID_REQUEST',
+          retryable: false,
+        },
         { status: 400 }
       );
     }
@@ -44,16 +57,21 @@ export async function POST(req: NextRequest) {
         'একাধিক বইয়ের প্রদত্ত অংশগুলো বিশ্লেষণ করে একই টপিকের তথ্য একত্রিত ও তুলনা করুন। কোন বইয়ে কোন অতিরিক্ত বা বিশেষ তথ্য আছে তা স্পষ্টভাবে [বইয়ের নাম, পৃষ্ঠা নং] রেফারেন্সসহ উপস্থাপন করুন।',
     };
 
-    const ai = getGeminiClient();
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: `টপিক / প্রশ্ন: ${topic || 'নির্বাচিত অধ্যায়সমূহ'}\n\nনির্দেশনা: ${modeInstruction[mode]}\n\nসংগৃহীত Knowledge Base অংশ:\n${contextBlock}`,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        systemInstruction:
-          'You are an expert Bangladeshi job preparation teacher (BCS, Bank, Govt exams). Answer strictly from the provided RAG source excerpts in crisp, well-structured Bengali with exact [Book Name, পৃষ্ঠা X] citations. Never fabricate facts outside the provided excerpts.',
+    const response = await generateWithRetry(
+      {
+        model: GEMINI_MODEL,
+        contents: `টপিক / প্রশ্ন: ${topic || 'নির্বাচিত অধ্যায়সমূহ'}\n\nনির্দেশনা: ${modeInstruction[mode]}\n\nসংগৃহীত Knowledge Base অংশ:\n${contextBlock}`,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          systemInstruction:
+            'You are an expert Bangladeshi job preparation teacher (BCS, Bank, Govt exams). Answer strictly from the provided RAG source excerpts in crisp, well-structured Bengali with exact [Book Name, পৃষ্ঠা X] citations. Never fabricate facts outside the provided excerpts.',
+        },
       },
-    });
+      {
+        timeoutMs: DEFAULT_AI_TIMEOUT_MS,
+        signal: req.signal,
+      }
+    );
 
     return NextResponse.json({
       result: (response.text ?? '').trim(),
@@ -64,15 +82,10 @@ export async function POST(req: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error('POST /api/ai/reader failed:', error);
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'স্মার্ট রিডার বিশ্লেষণ তৈরি করতে সমস্যা হয়েছে।',
-      },
-      { status: 500 }
+    return mapAiErrorToHttpResponse(
+      error,
+      'POST /api/ai/reader',
+      'স্মার্ট রিডার বিশ্লেষণ তৈরি করতে সমস্যা হয়েছে।'
     );
   }
 }

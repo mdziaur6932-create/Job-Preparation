@@ -1,24 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ThinkingLevel } from '@google/genai';
-import { GEMINI_MODEL, getGeminiClient } from '@/src/lib/gemini';
+import {
+  DEFAULT_AI_TIMEOUT_MS,
+  GEMINI_MODEL,
+  generateWithRetry,
+  mapAiErrorToHttpResponse,
+  parseJsonBody,
+} from '@/src/lib/gemini';
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    const body = await parseJsonBody<Record<string, unknown>>(req);
     const message = String(body.message || '').trim();
     const mode: 'tutor' | 'viva' = body.mode === 'viva' ? 'viva' : 'tutor';
     const history: Array<{ role: 'user' | 'assistant'; text: string }> =
-      Array.isArray(body.history) ? body.history.slice(-8) : [];
+      Array.isArray(body.history)
+        ? (body.history.slice(-8) as Array<{
+            role: 'user' | 'assistant';
+            text: string;
+          }>)
+        : [];
     const chunks: Array<{
       bookTitle: string;
       chapter: string;
       pageNumber: number;
       content: string;
-    }> = Array.isArray(body.chunks) ? body.chunks.slice(0, 5) : [];
+    }> = Array.isArray(body.chunks)
+      ? (body.chunks.slice(0, 5) as Array<{
+          bookTitle: string;
+          chapter: string;
+          pageNumber: number;
+          content: string;
+        }>)
+      : [];
 
     if (!message) {
       return NextResponse.json(
-        { error: 'অনুগ্রহ করে আপনার প্রশ্ন বা উত্তর লিখুন।' },
+        {
+          error: 'অনুগ্রহ করে আপনার প্রশ্ন বা উত্তর লিখুন।',
+          code: 'INVALID_REQUEST',
+          retryable: false,
+        },
         { status: 400 }
       );
     }
@@ -42,29 +64,29 @@ export async function POST(req: NextRequest) {
         ? 'You are a formal, encouraging BCS & Bank Viva Board Examiner in Bangladesh. Evaluate the candidate’s previous answer briefly (strength + correction) and then ask ONE sharp, realistic follow-up viva question in Bengali grounded in the candidate’s library excerpts when available.'
         : 'You are a personal AI Study Assistant for Bangladeshi job exams (BCS, Bank, Primary, Govt). Answer concisely in clear Bengali, cite [বইয়ের নাম, পৃষ্ঠা নং] when using provided excerpts, and conclude with 1 quick practice tip.';
 
-    const ai = getGeminiClient();
-    const response = await ai.models.generateContent({
-      model: GEMINI_MODEL,
-      contents: `${transcript ? `পূর্ববর্তী কথোপকথন:\n${transcript}\n\n` : ''}বর্তমান বার্তা: ${message}${ragContext}`,
-      config: {
-        thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
-        systemInstruction,
+    const response = await generateWithRetry(
+      {
+        model: GEMINI_MODEL,
+        contents: `${transcript ? `পূর্ববর্তী কথোপকথন:\n${transcript}\n\n` : ''}বর্তমান বার্তা: ${message}${ragContext}`,
+        config: {
+          thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
+          systemInstruction,
+        },
       },
-    });
+      {
+        timeoutMs: DEFAULT_AI_TIMEOUT_MS,
+        signal: req.signal,
+      }
+    );
 
     return NextResponse.json({
       reply: (response.text ?? '').trim(),
     });
   } catch (error) {
-    console.error('POST /api/ai/tutor failed:', error);
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : 'AI শিক্ষক উত্তর তৈরি করতে পারেনি।',
-      },
-      { status: 500 }
+    return mapAiErrorToHttpResponse(
+      error,
+      'POST /api/ai/tutor',
+      'AI শিক্ষক উত্তর তৈরি করতে পারেনি।'
     );
   }
 }
