@@ -1,11 +1,12 @@
 {
-  "projectId": "indigo-theorem-0ggh3",
-  "appId": "1:467673672632:web:c9b52d5950bf581d283d4d",
-  "apiKey": "AIzaSyAUXoSSfTMIYJbgZ3UhDbu3obiPn1B_j5o",
-  "authDomain": "indigo-theorem-0ggh3.firebaseapp.com",
-  "storageBucket": "indigo-theorem-0ggh3.firebasestorage.app",
-  "messagingSenderId": "467673672632",
+  "projectId": "gen-lang-client-0491331950",
+  "appId": "1:332820327799:web:8a4fce94293a8c0cc5c572",
+  "apiKey": "AIzaSyDzqi4yknhc8fw7JET0hR69c5E2bGWmU3c",
+  "authDomain": "gen-lang-client-0491331950.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-aipersonalaijobp-37cb95c8-2b11-4e6c-a7ec-f52ecdb4692d",
+  "storageBucket": "gen-lang-client-0491331950.firebasestorage.app",
+  "messagingSenderId": "332820327799",
   "measurementId": "",
-  "oAuthClientId": "467673672632-9ohk7im8ciagl80shffkvn0t28cmb81t.apps.googleusercontent.com",
+  "oAuthClientId": "332820327799-deh23vqi7sj0q5lpk9u14d9dk6ma2mpg.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

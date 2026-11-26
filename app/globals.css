@@ -24,3 +24,184 @@
 .tabular-nums {
   font-variant-numeric: tabular-nums;
 }
+
+.exam-header-text {
+  font-family: var(--font-sans);
+  font-size: 15.5pt;
+  line-height: 1.28;
+}
+
+.exam-text-bn {
+  font-family: "SolaimanLipi", var(--font-hind-siliguri), "Noto Sans Bengali", sans-serif;
+  font-size: 10.75pt;
+  line-height: 1.42;
+}
+
+.exam-text-en {
+  font-family: "Times New Roman", Times, Georgia, serif;
+  font-size: 11.25pt;
+  line-height: 1.42;
+}
+
+.exam-text-justify {
+  text-align: justify;
+  text-justify: inter-word;
+  hyphens: none;
+  -webkit-hyphens: none;
+}
+
+/* Publication-grade A4 Paper Sheet (210mm width, 12.7mm / 0.5in Narrow Margin) */
+.a4-paper-sheet {
+  width: 100%;
+  max-width: 210mm;
+  margin-left: auto;
+  margin-right: auto;
+  background-color: #ffffff;
+  padding: 10mm 9mm;
+}
+
+.a4-word-page {
+  width: 100%;
+  max-width: 210mm;
+  margin-left: auto;
+  margin-right: auto;
+  background-color: #ffffff;
+  padding: 10mm 9mm;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Exact MCQ Publication Page Setup (8.5" x 11" Letter Portrait; Top/Bottom 0.5", Left/Right 0.8", Multiple 1.2 leading) */
+.mcq-letter-page {
+  width: 100%;
+  max-width: 8.5in;
+  margin-left: auto;
+  margin-right: auto;
+  background-color: #ffffff;
+  padding: 0.45in 0.5in;
+  display: flex;
+  flex-direction: column;
+}
+
+.mcq-letter-page .mcq-adaptive-col {
+  line-height: var(--mcq-line-height, 1.2);
+}
+
+.mcq-letter-page .exam-text-bn {
+  font-size: 10.5pt;
+  line-height: var(--mcq-line-height, 1.2);
+}
+
+.mcq-letter-page .exam-text-en {
+  font-size: 11pt;
+  line-height: var(--mcq-line-height, 1.2);
+}
+
+@media (min-width: 640px) {
+  .a4-paper-sheet,
+  .a4-word-page {
+    padding: 11.5mm 12.7mm 11mm;
+  }
+
+  .a4-word-page {
+    min-height: 297mm;
+  }
+
+  .mcq-letter-page {
+    padding: 0.5in 0.8in;
+    min-height: 11in;
+  }
+}
+
+.a4-two-col-flow {
+  column-count: 1;
+  column-gap: 7mm;
+}
+
+@media (min-width: 768px) {
+  .a4-two-col-flow {
+    column-count: 2;
+    column-gap: 7mm;
+    column-rule: 1px solid #0f172a;
+  }
+}
+
+@page {
+  size: A4 portrait;
+  margin: 12.7mm;
+}
+
+@page mcq-letter {
+  size: 8.5in 11in portrait;
+  margin: 0.5in 0.8in;
+}
+
+@media print {
+  html,
+  body {
+    background: #ffffff !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #printable-exam-sheet,
+  #printable-exam-sheet *,
+  #smart-reader-a4-sheet,
+  #smart-reader-a4-sheet * {
+    visibility: visible;
+  }
+
+  #printable-exam-sheet,
+  #smart-reader-a4-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100% !important;
+    max-width: none !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+  }
+
+  .a4-word-page,
+  .mcq-letter-page {
+    width: 100% !important;
+    max-width: none !important;
+    min-height: auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    border-radius: 0 !important;
+    box-shadow: none !important;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .mcq-letter-page {
+    page: mcq-letter;
+  }
+
+  .a4-word-page:last-of-type,
+  .mcq-letter-page:last-of-type {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .a4-two-col-flow {
+    column-count: 2 !important;
+    column-gap: 0.2in !important;
+    column-rule: 1px solid #0f172a !important;
+  }
+}
+
+

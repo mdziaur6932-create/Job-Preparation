@@ -2,14 +2,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ThinkingLevel, Type } from '@google/genai';
 import {
   DEFAULT_AI_TIMEOUT_MS,
+  GEMINI_FAST_OCR_MODEL,
   GEMINI_MODEL,
   generateWithRetry,
   mapAiErrorToHttpResponse,
   parseAiJson,
   parseJsonBody,
 } from '@/src/lib/gemini';
+import { guardAiApiRequest } from '@/src/lib/ai-api-guard';
 
 export async function POST(req: NextRequest) {
+  const guard = await guardAiApiRequest(req, 'gk-convert');
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   try {
     const body = await parseJsonBody<Record<string, unknown>>(req);
     const title = String(body.title || '').trim();
@@ -71,6 +78,7 @@ export async function POST(req: NextRequest) {
       },
       {
         timeoutMs: DEFAULT_AI_TIMEOUT_MS,
+        fallbackModel: GEMINI_FAST_OCR_MODEL,
         signal: req.signal,
       }
     );

@@ -1,0 +1,510 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global Safety Net: Default-deny all unmatched paths
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Reusable Hardened Primitives
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isNullableInt(val) {
+      return val == null || val is int;
+    }
+
+    function isNullableString(val, maxLen) {
+      return val == null || (val is string && val.size() <= maxLen);
+    }
+
+    // Validation Blueprints (verbatim bounds from firebase-blueprint.json)
+    function isValidUserPrivateProfile(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'email', 'targetExam', 'driveSyncEnabled', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'email', 'targetExam', 'driveSyncEnabled', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid)
+        && data.uid == request.auth.uid && data.uid == userId
+        && data.displayName is string && data.displayName.size() <= 120
+        && data.email is string && data.email.size() <= 254
+        && request.auth.token.email is string && data.email == request.auth.token.email
+        && data.targetExam is string && data.targetExam.size() <= 160
+        && data.driveSyncEnabled is bool
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudyBookmark(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'bookTitle', 'subject', 'note', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'bookTitle', 'subject', 'note', 'status', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid)
+        && data.uid == request.auth.uid && data.uid == userId
+        && data.bookTitle is string && data.bookTitle.size() >= 1 && data.bookTitle.size() <= 200
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 120
+        && data.note is string && data.note.size() >= 1 && data.note.size() <= 1000
+        && data.status is string && data.status in ['active', 'archived']
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBookRecord(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'id', 'title', 'author', 'subject', 'category', 'totalPages',
+          'extractionMethod', 'ocrCompleted', 'driveFileId', 'driveWebViewLink',
+          'driveFileName', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'id', 'title', 'author', 'subject', 'category', 'totalPages',
+          'extractionMethod', 'ocrCompleted', 'driveFileId', 'driveWebViewLink',
+          'driveFileName', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid)
+        && data.uid == request.auth.uid && data.uid == userId
+        && data.id is int && data.id > 0
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 240
+        && data.author is string && data.author.size() <= 160
+        && data.subject is string && data.subject.size() >= 1 && data.subject.size() <= 160
+        && data.category is string && data.category in ['BCS', 'Bank', 'Primary', 'Current GK', 'Previous Year', 'রিসেন্ট জব সলুশন', 'বিষয়ভিত্তিক মূল বই', 'অন্যান্য']
+        && data.totalPages is int && data.totalPages >= 1 && data.totalPages <= 10000
+        && data.extractionMethod is string && data.extractionMethod in ['text', 'ocr', 'manual']
+        && data.ocrCompleted is bool
+        && isNullableString(data.driveFileId, 200)
+        && isNullableString(data.driveWebViewLink, 500)
+        && isNullableString(data.driveFileName, 200)
+        && data.createdDate is string && data.createdDate.size() <= 32
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidBookChunkRecord(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'id', 'bookId', 'bookTitle', 'chapter', 'pageNumber',
+          'chunkIndex', 'content', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'id', 'bookId', 'bookTitle', 'chapter', 'pageNumber',
+          'chunkIndex', 'content', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid)
+        && data.uid == request.auth.uid && data.uid == userId
+        && data.id is int && data.id > 0
+        && data.bookId is int && data.bookId > 0
+        && data.bookTitle is string && data.bookTitle.size() <= 240
+        && data.chapter is string && data.chapter.size() <= 240
+        && data.pageNumber is int && data.pageNumber >= 1 && data.pageNumber <= 50000
+        && data.chunkIndex is int && data.chunkIndex >= 0 && data.chunkIndex <= 50000
+        && data.content is string && data.content.size() >= 1 && data.content.size() <= 40000
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidQuestionRecord(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'id', 'bookId', 'bookTitle', 'chapter', 'pageNumber', 'subject',
+          'questionType', 'difficulty', 'stem', 'options', 'correctOptionIndex',
+          'modelAnswer', 'explanation', 'isPreviousYear', 'examYear', 'examSource',
+          'importanceScore', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'id', 'bookId', 'bookTitle', 'chapter', 'pageNumber', 'subject',
+          'questionType', 'difficulty', 'stem', 'options', 'correctOptionIndex',
+          'modelAnswer', 'explanation', 'isPreviousYear', 'examYear', 'examSource',
+          'importanceScore', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid)
+        && data.uid == request.auth.uid && data.uid == userId
+        && data.id is int && data.id > 0
+        && isNullableInt(data.bookId)
+        && data.bookTitle is string && data.bookTitle.size() <= 240
+        && data.chapter is string && data.chapter.size() <= 240
+        && data.pageNumber is int && data.pageNumber >= 1
+        && data.subject is string && data.subject.size() <= 160
+        && data.questionType is string && data.questionType in ['MCQ', 'Written', 'Short']
+        && data.difficulty is string && data.difficulty in ['Easy', 'Medium', 'Hard']
+        && data.stem is string && data.stem.size() >= 1 && data.stem.size() <= 4000
+        && data.options is list && data.options.size() <= 10
+        && (data.options.size() == 0 || data.options[0] is string)
+        && isNullableInt(data.correctOptionIndex)
+        && data.modelAnswer is string && data.modelAnswer.size() <= 8000
+        && data.explanation is string && data.explanation.size() <= 8000
+        && data.isPreviousYear is bool
+        && isNullableString(data.examYear, 40)
+        && isNullableString(data.examSource, 160)
+        && data.importanceScore is int && data.importanceScore >= 0 && data.importanceScore <= 100
+        && data.createdDate is string && data.createdDate.size() <= 32
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidExamRecord(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'id', 'title', 'subject', 'examMode', 'durationMinutes',
+          'marksPerQuestion', 'negativeMark', 'questionIds', 'status',
+          'draftAnswers', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'id', 'title', 'subject', 'examMode', 'durationMinutes',
+          'marksPerQuestion', 'negativeMark', 'questionIds', 'status',
+          'draftAnswers', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid)
+        && data.uid == request.auth.uid && data.uid == userId
+        && data.id is int && data.id > 0
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 240
+        && data.subject is string && data.subject.size() <= 160
+        && data.examMode is string && data.examMode in ['MCQ', 'Written', 'Mixed']
+        && data.durationMinutes is int && data.durationMinutes >= 1 && data.durationMinutes <= 600
+        && data.marksPerQuestion is number && data.marksPerQuestion >= 0
+        && data.negativeMark is number && data.negativeMark >= 0
+        && data.questionIds is list && data.questionIds.size() <= 300
+        && (data.questionIds.size() == 0 || data.questionIds[0] is int)
+        && data.status is string && data.status in ['draft', 'in_progress', 'completed']
+        && data.draftAnswers is map
+        && data.createdDate is string && data.createdDate.size() <= 32
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidExamAttemptRecord(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'id', 'examId', 'examTitle', 'subject', 'totalMarks', 'obtainedMarks',
+          'negativeDeduction', 'correctCount', 'wrongCount', 'skippedCount',
+          'mcqAccuracy', 'writtenScore', 'durationSeconds', 'evaluations',
+          'weakTopics', 'aiRecommendation', 'submittedAtIso', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'id', 'examId', 'examTitle', 'subject', 'totalMarks', 'obtainedMarks',
+          'negativeDeduction', 'correctCount', 'wrongCount', 'skippedCount',
+          'mcqAccuracy', 'writtenScore', 'durationSeconds', 'evaluations',
+          'weakTopics', 'aiRecommendation', 'submittedAtIso', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid)
+        && data.uid == request.auth.uid && data.uid == userId
+        && data.id is int && data.id > 0
+        && isNullableInt(data.examId)
+        && data.examTitle is string && data.examTitle.size() >= 1 && data.examTitle.size() <= 240
+        && data.subject is string && data.subject.size() <= 160
+        && data.totalMarks is number
+        && data.obtainedMarks is number
+        && data.negativeDeduction is number
+        && data.correctCount is int && data.correctCount >= 0
+        && data.wrongCount is int && data.wrongCount >= 0
+        && data.skippedCount is int && data.skippedCount >= 0
+        && data.mcqAccuracy is number
+        && data.writtenScore is number
+        && data.durationSeconds is int && data.durationSeconds >= 0
+        && data.evaluations is list && data.evaluations.size() <= 300
+        && (data.evaluations.size() == 0 || data.evaluations[0] is map)
+        && data.weakTopics is list && data.weakTopics.size() <= 50
+        && (data.weakTopics.size() == 0 || data.weakTopics[0] is string)
+        && data.aiRecommendation is string && data.aiRecommendation.size() <= 8000
+        && data.submittedAtIso is string && data.submittedAtIso.size() <= 64
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidMistakeRecord(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'id', 'questionId', 'attemptId', 'questionStem', 'subject',
+          'chapter', 'userAnswer', 'correctAnswer', 'reason', 'mastered',
+          'reviewCount', 'nextReviewDate', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'id', 'questionId', 'attemptId', 'questionStem', 'subject',
+          'chapter', 'userAnswer', 'correctAnswer', 'reason', 'mastered',
+          'reviewCount', 'nextReviewDate', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid)
+        && data.uid == request.auth.uid && data.uid == userId
+        && data.id is int && data.id > 0
+        && isNullableInt(data.questionId)
+        && isNullableInt(data.attemptId)
+        && data.questionStem is string && data.questionStem.size() >= 1 && data.questionStem.size() <= 4000
+        && data.subject is string && data.subject.size() <= 160
+        && data.chapter is string && data.chapter.size() <= 240
+        && data.userAnswer is string && data.userAnswer.size() <= 4000
+        && data.correctAnswer is string && data.correctAnswer.size() <= 4000
+        && data.reason is string && data.reason.size() <= 4000
+        && data.mastered is bool
+        && data.reviewCount is int && data.reviewCount >= 0
+        && data.nextReviewDate is string && data.nextReviewDate.size() <= 32
+        && data.createdDate is string && data.createdDate.size() <= 32
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCurrentGkRecord(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'id', 'title', 'summary', 'category', 'eventDate', 'source',
+          'isArchived', 'convertedToQuestions', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'id', 'title', 'summary', 'category', 'eventDate', 'source',
+          'isArchived', 'convertedToQuestions', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid)
+        && data.uid == request.auth.uid && data.uid == userId
+        && data.id is int && data.id > 0
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 240
+        && data.summary is string && data.summary.size() <= 6000
+        && data.category is string && data.category.size() <= 120
+        && data.eventDate is string && data.eventDate.size() <= 32
+        && data.source is string && data.source.size() <= 200
+        && data.isArchived is bool
+        && data.convertedToQuestions is bool
+        && data.createdDate is string && data.createdDate.size() <= 32
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidStudyTaskRecord(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'id', 'title', 'subject', 'chapter', 'taskType', 'scheduledDate',
+          'durationMinutes', 'completed', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'id', 'title', 'subject', 'chapter', 'taskType', 'scheduledDate',
+          'durationMinutes', 'completed', 'createdDate', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid)
+        && data.uid == request.auth.uid && data.uid == userId
+        && data.id is int && data.id > 0
+        && data.title is string && data.title.size() >= 1 && data.title.size() <= 240
+        && data.subject is string && data.subject.size() <= 160
+        && data.chapter is string && data.chapter.size() <= 240
+        && data.taskType is string && data.taskType in ['reading', 'revision', 'practice', 'exam']
+        && data.scheduledDate is string && data.scheduledDate.size() <= 32
+        && data.durationMinutes is int && data.durationMinutes >= 1 && data.durationMinutes <= 1440
+        && data.completed is bool
+        && data.createdDate is string && data.createdDate.size() <= 32
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    // Collection 1: Private User Profile (PII Isolation — single 'profile' doc, no list)
+    match /users/{userId}/private/{docId} {
+      allow get: if isSignedIn() && isValidId(userId) && docId == 'profile' && isOwner(userId);
+      allow list: if false;
+      allow create: if isVerifiedUser() && isValidId(userId) && docId == 'profile' && isOwner(userId)
+        && isValidUserPrivateProfile(incoming(), userId)
+        && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(userId) && docId == 'profile' && isOwner(userId)
+        && isValidUserPrivateProfile(incoming(), userId)
+        && incoming().uid == existing().uid && incoming().email == existing().email
+        && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time
+        && (
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'displayName', 'targetExam', 'driveSyncEnabled', 'updatedAt'
+          ])
+        );
+      allow delete: if isVerifiedUser() && isValidId(userId) && docId == 'profile' && isOwner(userId);
+    }
+
+    // Collection 2: Study Bookmarks
+    match /users/{userId}/studyBookmarks/{bookmarkId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(bookmarkId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(userId) && isValidId(bookmarkId) && isOwner(userId)
+        && isValidStudyBookmark(incoming(), userId) && incoming().status == 'active'
+        && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(userId) && isValidId(bookmarkId) && isOwner(userId)
+        && isValidStudyBookmark(incoming(), userId)
+        && existing().uid == request.auth.uid && existing().status != 'archived'
+        && incoming().uid == existing().uid && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          (incoming().status == 'active' && incoming().diff(existing()).affectedKeys().hasOnly(['bookTitle', 'subject', 'note', 'updatedAt']))
+          || (incoming().status == 'archived' && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']))
+        );
+      allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(bookmarkId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+    }
+
+    // Collection 3: Books
+    match /users/{userId}/books/{bookId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(bookId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(userId) && isValidId(bookId) && isOwner(userId)
+        && isValidBookRecord(incoming(), userId)
+        && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(userId) && isValidId(bookId) && isOwner(userId)
+        && isValidBookRecord(incoming(), userId)
+        && existing().uid == request.auth.uid && incoming().uid == existing().uid
+        && incoming().id == existing().id && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action: UpdateDriveMeta
+          incoming().diff(existing()).affectedKeys().hasOnly([
+            'driveFileId', 'driveWebViewLink', 'driveFileName', 'updatedAt'
+          ])
+        );
+      allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(bookId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+    }
+
+    // Collection 4: Book Chunks
+    match /users/{userId}/bookChunks/{chunkId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(chunkId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(userId) && isValidId(chunkId) && isOwner(userId)
+        && isValidBookChunkRecord(incoming(), userId)
+        && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(chunkId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+    }
+
+    // Collection 5: Questions
+    match /users/{userId}/questions/{questionId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(questionId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(userId) && isValidId(questionId) && isOwner(userId)
+        && isValidQuestionRecord(incoming(), userId)
+        && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(questionId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+    }
+
+    // Collection 6: Exams
+    match /users/{userId}/exams/{examId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(examId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(userId) && isValidId(examId) && isOwner(userId)
+        && isValidExamRecord(incoming(), userId)
+        && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(userId) && isValidId(examId) && isOwner(userId)
+        && isValidExamRecord(incoming(), userId)
+        && existing().uid == request.auth.uid && existing().status != 'completed'
+        && incoming().uid == existing().uid && incoming().id == existing().id
+        && incoming().createdAt == existing().createdAt && incoming().updatedAt == request.time
+        && (
+          // Action: SaveDraft
+          (incoming().status == 'in_progress'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'draftAnswers', 'updatedAt']))
+          ||
+          // Action: CompleteExam
+          (incoming().status == 'completed'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'draftAnswers', 'updatedAt']))
+        );
+      allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(examId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+    }
+
+    // Collection 7: Exam Attempts (Immutable once submitted)
+    match /users/{userId}/attempts/{attemptId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(attemptId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(userId) && isValidId(attemptId) && isOwner(userId)
+        && isValidExamAttemptRecord(incoming(), userId)
+        && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if false;
+      allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(attemptId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+    }
+
+    // Collection 8: Mistakes
+    match /users/{userId}/mistakes/{mistakeId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(mistakeId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(userId) && isValidId(mistakeId) && isOwner(userId)
+        && isValidMistakeRecord(incoming(), userId)
+        && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(userId) && isValidId(mistakeId) && isOwner(userId)
+        && isValidMistakeRecord(incoming(), userId)
+        && existing().uid == request.auth.uid && incoming().uid == existing().uid
+        && incoming().id == existing().id && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action: ToggleMastered
+          incoming().diff(existing()).affectedKeys().hasOnly(['mastered', 'reviewCount', 'updatedAt'])
+        );
+      allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(mistakeId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+    }
+
+    // Collection 9: Current GK Items
+    match /users/{userId}/gkItems/{itemId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(itemId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(userId) && isValidId(itemId) && isOwner(userId)
+        && isValidCurrentGkRecord(incoming(), userId)
+        && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(userId) && isValidId(itemId) && isOwner(userId)
+        && isValidCurrentGkRecord(incoming(), userId)
+        && existing().uid == request.auth.uid && incoming().uid == existing().uid
+        && incoming().id == existing().id && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action: ToggleArchive
+          incoming().diff(existing()).affectedKeys().hasOnly(['isArchived', 'updatedAt'])
+          ||
+          // Action: MarkConverted
+          incoming().diff(existing()).affectedKeys().hasOnly(['convertedToQuestions', 'updatedAt'])
+        );
+      allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(itemId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+    }
+
+    // Collection 10: Study Tasks
+    match /users/{userId}/studyTasks/{taskId} {
+      allow get: if isSignedIn() && isValidId(userId) && isValidId(taskId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+      allow list: if isSignedIn() && isValidId(userId) && isOwner(userId) && existing().uid == request.auth.uid;
+      allow create: if isVerifiedUser() && isValidId(userId) && isValidId(taskId) && isOwner(userId)
+        && isValidStudyTaskRecord(incoming(), userId)
+        && incoming().createdAt == request.time && incoming().updatedAt == request.time;
+      allow update: if isVerifiedUser() && isValidId(userId) && isValidId(taskId) && isOwner(userId)
+        && isValidStudyTaskRecord(incoming(), userId)
+        && existing().uid == request.auth.uid && incoming().uid == existing().uid
+        && incoming().id == existing().id && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          // Action: ToggleCompleted
+          incoming().diff(existing()).affectedKeys().hasOnly(['completed', 'updatedAt'])
+          ||
+          // Action: EditOrRescheduleTask
+          incoming().diff(existing()).affectedKeys().hasOnly(['title', 'subject', 'chapter', 'taskType', 'scheduledDate', 'durationMinutes', 'updatedAt'])
+        );
+      allow delete: if isVerifiedUser() && isValidId(userId) && isValidId(taskId)
+        && isOwner(userId) && existing().uid == request.auth.uid;
+    }
+  }
+}

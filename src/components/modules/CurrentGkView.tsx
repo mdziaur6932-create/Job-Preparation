@@ -8,9 +8,15 @@ import {
   Loader2,
   CheckCircle2,
   Globe,
+  Newspaper,
+  Trash2,
   X,
 } from 'lucide-react';
 import { useWorkspace } from '../WorkspaceProvider';
+import { formatAiResponseError } from '@/src/lib/ai-client';
+import { toBengaliNumber } from '@/src/lib/file-validation';
+import { isPaperCuttingGkItem } from '@/src/lib/paper-cutting-parser';
+import { PaperCuttingPanel } from './PaperCuttingPanel';
 
 const GK_CATEGORIES = ['সব', 'জাতীয়', 'অর্থনীতি', 'আন্তর্জাতিক', 'বিজ্ঞান ও প্রযুক্তি'];
 
@@ -20,10 +26,16 @@ export function CurrentGkView() {
     addGkItem,
     toggleGkArchive,
     markGkConverted,
+    deleteGkItem,
     addQuestions,
+    getAiAuthHeaders,
+    requestAiSignIn,
   } = useWorkspace();
 
-  const [viewMode, setViewMode] = useState<'current' | 'archived'>('current');
+  const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+
+  const [viewMode, setViewMode] = useState<'current' | 'paper-cutting' | 'archived'>('current');
   const [categoryFilter, setCategoryFilter] = useState('সব');
   const [showAddForm, setShowAddForm] = useState(false);
 
@@ -40,9 +52,17 @@ export function CurrentGkView() {
   const [convertNotice, setConvertNotice] = useState<string | null>(null);
   const [convertError, setConvertError] = useState<string | null>(null);
 
+  const paperCuttingItems = useMemo(() => {
+    return data.gkItems.filter(
+      (item) => !item.isArchived && isPaperCuttingGkItem(item)
+    );
+  }, [data.gkItems]);
+
   const visibleItems = useMemo(() => {
     return data.gkItems.filter((item) => {
-      if (viewMode === 'current' && item.isArchived) return false;
+      if (viewMode === 'current') {
+        if (item.isArchived || isPaperCuttingGkItem(item)) return false;
+      }
       if (viewMode === 'archived' && !item.isArchived) return false;
       if (categoryFilter !== 'সব' && item.category !== categoryFilter) {
         return false;
@@ -73,13 +93,23 @@ export function CurrentGkView() {
   };
 
   const handleConvertToQuestions = async (item: (typeof data.gkItems)[number]) => {
-    setConvertingId(item.id);
     setConvertNotice(null);
     setConvertError(null);
+
+    const authHeaders = await getAiAuthHeaders();
+    if (!authHeaders) {
+      requestAiSignIn('সাম্প্রতিক GK থেকে AI প্রশ্ন রূপান্তর');
+      return;
+    }
+
+    setConvertingId(item.id);
     try {
       const res = await fetch('/api/ai/gk-convert', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
         body: JSON.stringify({
           title: item.title,
           summary: item.summary,
@@ -88,9 +118,14 @@ export function CurrentGkView() {
           source: item.source,
         }),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(json.error || 'প্রশ্ন রূপান্তর ব্যর্থ হয়েছে।');
+        if (res.status === 401) {
+          requestAiSignIn('সাম্প্রতিক GK থেকে AI প্রশ্ন রূপান্তর');
+        }
+        throw new Error(
+          formatAiResponseError(res.status, json, 'প্রশ্ন রূপান্তর ব্যর্থ হয়েছে।')
+        );
       }
       const created = Array.isArray(json.questions) ? json.questions : [];
       if (created.length > 0) {
@@ -266,12 +301,12 @@ export function CurrentGkView() {
         </p>
       )}
 
-      {/* Filter Bar: Current vs Archive + Category */}
+      {/* Filter Bar: Current vs Paper Cutting vs Archive + Category */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div
           role="tablist"
-          aria-label="সাম্প্রতিক ও পুরোনো তথ্য বিভাজন"
-          className="inline-flex items-center gap-1 rounded-lg bg-slate-200/70 p-1 self-start"
+          aria-label="সাম্প্রতিক, পেপার কাটিং ও পুরোনো তথ্য বিভাজন"
+          className="inline-flex flex-wrap items-center gap-1 rounded-lg bg-slate-200/70 p-1 self-start"
         >
           <button
             type="button"
@@ -285,6 +320,26 @@ export function CurrentGkView() {
             }`}
           >
             সাম্প্রতিক (নতুন)
+          </button>
+          <button
+            type="button"
+            role="tab"
+            data-testid="tab-paper-cutting"
+            aria-selected={viewMode === 'paper-cutting'}
+            onClick={() => setViewMode('paper-cutting')}
+            className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+              viewMode === 'paper-cutting'
+                ? 'bg-white text-blue-700 shadow-xs'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            <Newspaper className="h-3.5 w-3.5" />
+            <span>Paper Cutting</span>
+            {paperCuttingItems.length > 0 && (
+              <span className="font-mono text-[11px] tabular-nums opacity-75">
+                ({toBengaliNumber(paperCuttingItems.length)})
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -319,8 +374,13 @@ export function CurrentGkView() {
         </div>
       </div>
 
-      {/* GK Feed */}
-      {visibleItems.length === 0 ? (
+      {/* Paper Cutting Workspace OR GK Feed */}
+      {viewMode === 'paper-cutting' ? (
+        <PaperCuttingPanel
+          items={paperCuttingItems}
+          categoryFilter={categoryFilter}
+        />
+      ) : visibleItems.length === 0 ? (
         <div className="rounded-xl border border-slate-200 bg-white p-12 text-center">
           <Globe className="mx-auto h-7 w-7 text-slate-400" />
           <p className="mt-2 text-sm text-slate-500">
@@ -360,7 +420,7 @@ export function CurrentGkView() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex flex-wrap items-center gap-2 shrink-0">
                   <button
                     type="button"
                     onClick={() => void handleConvertToQuestions(item)}
@@ -392,6 +452,47 @@ export function CurrentGkView() {
                     <Archive className="h-3.5 w-3.5" />
                     <span>{item.isArchived ? 'পুনরুদ্ধার' : 'আর্কাইভ'}</span>
                   </button>
+
+                  {confirmDeleteId === item.id ? (
+                    <div className="inline-flex items-center gap-1.5 rounded-lg border border-red-300 bg-red-50 px-2 py-1">
+                      <button
+                        type="button"
+                        data-testid={`confirm-delete-gk-btn-${item.id}`}
+                        disabled={deletingId === item.id}
+                        onClick={async () => {
+                          setDeletingId(item.id);
+                          try {
+                            await deleteGkItem(item.id);
+                            setConfirmDeleteId(null);
+                          } finally {
+                            setDeletingId(null);
+                          }
+                        }}
+                        className="rounded-md bg-red-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-700 disabled:opacity-50 whitespace-nowrap"
+                      >
+                        {deletingId === item.id ? 'মুছছে...' : 'নিশ্চিত মুছুন'}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={deletingId === item.id}
+                        onClick={() => setConfirmDeleteId(null)}
+                        className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                      >
+                        বাতিল
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      data-testid={`delete-gk-btn-${item.id}`}
+                      aria-label={`মুছুন: ${item.title}`}
+                      onClick={() => setConfirmDeleteId(item.id)}
+                      className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-2 text-xs font-medium text-red-700 hover:bg-red-50 transition-colors"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                      <span>মুছুন</span>
+                    </button>
+                  )}
                 </div>
               </div>
             </article>

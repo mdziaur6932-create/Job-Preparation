@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 import { ThinkingLevel } from '@google/genai';
 import {
   DEFAULT_AI_TIMEOUT_MS,
+  GEMINI_FAST_OCR_MODEL,
   GEMINI_MODEL,
   generateWithRetry,
   mapAiErrorToHttpResponse,
   parseJsonBody,
 } from '@/src/lib/gemini';
+import { guardAiApiRequest } from '@/src/lib/ai-api-guard';
 
 interface ChunkPayload {
   bookTitle: string;
@@ -16,6 +18,11 @@ interface ChunkPayload {
 }
 
 export async function POST(req: NextRequest) {
+  const guard = await guardAiApiRequest(req, 'reader');
+  if (!guard.ok) {
+    return guard.response;
+  }
+
   try {
     const body = await parseJsonBody<Record<string, unknown>>(req);
     const rawMode = String(body.mode || 'summary');
@@ -64,11 +71,12 @@ export async function POST(req: NextRequest) {
         config: {
           thinkingConfig: { thinkingLevel: ThinkingLevel.LOW },
           systemInstruction:
-            'You are an expert Bangladeshi job preparation teacher (BCS, Bank, Govt exams). Answer strictly from the provided RAG source excerpts in crisp, well-structured Bengali with exact [Book Name, পৃষ্ঠা X] citations. Never fabricate facts outside the provided excerpts.',
+            'You are an expert Bangladeshi job preparation teacher (BCS, Bank, Govt exams). Answer strictly from the provided full-page/full-exam RAG source context in crisp, well-structured Bengali with exact [Book Name, পৃষ্ঠা X] citations. Preserve the structural integrity of exam papers (exam title, question numbers, sub-options, and solutions) without dropping or scrambling items. Never fabricate facts outside the provided sources.',
         },
       },
       {
         timeoutMs: DEFAULT_AI_TIMEOUT_MS,
+        fallbackModel: GEMINI_FAST_OCR_MODEL,
         signal: req.signal,
       }
     );

@@ -44,8 +44,13 @@ export function chunkBookText(input: TextChunkInput): Omit<BookChunk, 'id'>[] {
 
   const results: Omit<BookChunk, 'id'>[] = [];
   let currentPage = startPage;
+  let currentChapter = input.chapter.trim() || 'অধ্যায় ১';
   let buffer = '';
   let chunkIndex = 0;
+
+  const hasExplicitPageMarkers = paragraphs.some((para) =>
+    /^(?:---\s*)?(?:page|পৃষ্ঠা)\s*[:#-]?\s*([0-9০-৯]+)(?:\s*---)?/i.test(para)
+  );
 
   const flushBuffer = () => {
     const trimmed = buffer.trim();
@@ -53,7 +58,7 @@ export function chunkBookText(input: TextChunkInput): Omit<BookChunk, 'id'>[] {
     results.push({
       bookId: input.bookId,
       bookTitle: input.bookTitle,
-      chapter: input.chapter.trim() || 'অধ্যায় ১',
+      chapter: currentChapter,
       pageNumber: currentPage,
       chunkIndex,
       content: trimmed,
@@ -73,7 +78,15 @@ export function chunkBookText(input: TextChunkInput): Omit<BookChunk, 'id'>[] {
       flushBuffer();
       const parsedPage = Number.parseInt(toAsciiDigits(pageMarker[1]), 10);
       currentPage = Number.isFinite(parsedPage) ? parsedPage : currentPage + 1;
-      const remainder = para.slice(pageMarker[0].length).trim();
+      let remainder = para.slice(pageMarker[0].length).trim();
+      const chapterMatch = remainder.match(/^\[([^\]]+)\]\s*/);
+      if (chapterMatch) {
+        const parsedChapter = chapterMatch[1].trim();
+        if (parsedChapter) {
+          currentChapter = parsedChapter;
+        }
+        remainder = remainder.slice(chapterMatch[0].length).trim();
+      }
       if (remainder) {
         buffer = remainder;
       }
@@ -82,7 +95,7 @@ export function chunkBookText(input: TextChunkInput): Omit<BookChunk, 'id'>[] {
 
     if ((buffer + '\n\n' + para).length > maxChars && buffer.length > 0) {
       flushBuffer();
-      if (chunkIndex > 0 && chunkIndex % 2 === 0) {
+      if (!hasExplicitPageMarkers && chunkIndex > 0 && chunkIndex % 2 === 0) {
         currentPage += 1;
       }
     }
@@ -207,28 +220,124 @@ export function rankChunksHybrid(
   return (positive.length > 0 ? positive : scored).slice(0, topK);
 }
 
+const DEDUP_STOP_WORDS = new Set([
+  'নিচের',
+  'নিম্নের',
+  'কোনটি',
+  'কোন',
+  'সঠিক',
+  'সঠিকটি',
+  'উত্তর',
+  'এর',
+  'হয়',
+  'হলো',
+  'হবে',
+  'কত',
+  'কবে',
+  'কোথায়',
+  'নয়',
+  'বলা',
+  'একটি',
+  'এবং',
+  'বা',
+  'থেকে',
+  'জন্য',
+  'সাথে',
+  'করে',
+  'করা',
+  'যায়',
+  'থাকে',
+  'আছে',
+  'হিসেবে',
+  'শব্দটির',
+  'শব্দের',
+  'বাক্যের',
+  'কোনটিই',
+  'the',
+  'is',
+  'are',
+  'was',
+  'were',
+  'of',
+  'in',
+  'to',
+  'for',
+  'on',
+  'at',
+  'by',
+  'from',
+  'with',
+  'and',
+  'or',
+  'an',
+  'which',
+  'what',
+  'who',
+  'choose',
+  'select',
+  'correct',
+  'right',
+  'following',
+  'sentence',
+  'word',
+]);
+
+function normalizeStemExact(stem: string): string {
+  return stem
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/[^\u0980-\u09FFa-z0-9]+/g, ' ')
+    .trim();
+}
+
+function extractDedupContentTokens(stem: string): Set<string> {
+  const all = tokenizeBilingual(stem);
+  const content = all.filter((tok) => !DEDUP_STOP_WORDS.has(tok));
+  return new Set(content.length > 0 ? content : all);
+}
+
 /**
- * Deduplicates candidate AI questions against existing Question Bank stems
- * using normalized token Jaccard similarity (>= 0.68 considered duplicate).
+ * Deduplicates candidate AI questions against existing Question Bank stems.
+ * Uses exact normalized stem matching PLUS boilerplate-filtered content-token Jaccard
+ * similarity (>= 0.80) so distinct Bengali/English MCQs like
+ * "‘বিদ্যালয়’ এর সঠিক সন্ধি বিচ্ছেদ কোনটি?" vs "‘হিমালয়’ এর সঠিক সন্ধি বিচ্ছেদ কোনটি?"
+ * are never falsely rejected as duplicates.
  */
 export function deduplicateQuestions<T extends { stem: string }>(
   candidates: T[],
   existingQuestions: Pick<Question, 'stem'>[],
-  threshold = 0.68
+  threshold = 0.8
 ): T[] {
-  const existingTokenSets = existingQuestions.map(
-    (q) => new Set(tokenizeBilingual(q.stem))
+  const seenExact = new Set<string>(
+    existingQuestions.map((q) => normalizeStemExact(q.stem)).filter(Boolean)
+  );
+  const existingTokenSets = existingQuestions.map((q) =>
+    extractDedupContentTokens(q.stem)
   );
 
   const accepted: T[] = [];
   const acceptedSets: Set<string>[] = [];
 
   for (const candidate of candidates) {
-    const cSet = new Set(tokenizeBilingual(candidate.stem));
+    const exactKey = normalizeStemExact(candidate.stem);
+    if (!exactKey) continue;
+    if (seenExact.has(exactKey)) continue;
+
+    const cSet = extractDedupContentTokens(candidate.stem);
     if (cSet.size === 0) continue;
 
     const isDuplicate = [...existingTokenSets, ...acceptedSets].some((other) => {
       if (other.size === 0) return false;
+      // For very short stems (<= 2 content tokens), require identical content tokens
+      // so two 1-word grammar prompts never collide on a single shared category word.
+      if (Math.min(cSet.size, other.size) <= 2) {
+        if (cSet.size !== other.size) return false;
+        for (const t of cSet) {
+          if (!other.has(t)) return false;
+        }
+        return true;
+      }
+
       let intersection = 0;
       for (const t of cSet) {
         if (other.has(t)) intersection += 1;
@@ -238,6 +347,7 @@ export function deduplicateQuestions<T extends { stem: string }>(
     });
 
     if (!isDuplicate) {
+      seenExact.add(exactKey);
       accepted.push(candidate);
       acceptedSets.push(cSet);
     }

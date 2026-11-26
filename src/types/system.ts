@@ -6,14 +6,18 @@ export type ModuleId =
   | 'evaluation'
   | 'current-gk'
   | 'planner'
-  | 'performance';
+  | 'performance'
+  | 'ocr-studio';
 
 export type BookCategory =
   | 'BCS'
   | 'Bank'
   | 'Primary'
   | 'Current GK'
-  | 'Previous Year';
+  | 'Previous Year'
+  | 'রিসেন্ট জব সলুশন'
+  | 'বিষয়ভিত্তিক মূল বই'
+  | 'অন্যান্য';
 
 export type QuestionType = 'MCQ' | 'Written' | 'Short';
 export type DifficultyLevel = 'Easy' | 'Medium' | 'Hard';
@@ -39,6 +43,9 @@ export interface Book {
   totalPages: number;
   extractionMethod: 'text' | 'ocr' | 'manual';
   ocrCompleted: boolean;
+  driveFileId?: string | null;
+  driveWebViewLink?: string | null;
+  driveFileName?: string | null;
   createdAt: string;
   chunks: BookChunk[];
 }

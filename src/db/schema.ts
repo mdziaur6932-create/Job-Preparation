@@ -34,6 +34,9 @@ export const books = pgTable('books', {
   totalPages: integer('total_pages').notNull().default(1),
   extractionMethod: text('extraction_method').notNull().default('text'),
   ocrCompleted: boolean('ocr_completed').notNull().default(false),
+  driveFileId: text('drive_file_id'),
+  driveWebViewLink: text('drive_web_view_link'),
+  driveFileName: text('drive_file_name'),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
 

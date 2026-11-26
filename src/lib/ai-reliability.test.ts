@@ -6,14 +6,17 @@ import {
   AiInvalidRequestError,
   AiResponseParseError,
   AiTimeoutError,
+  GEMINI_FAST_OCR_MODEL,
   GEMINI_MODEL,
   classifyAiError,
+  clearModelCooldowns,
   extractRetryDelayMs,
   extractUpstreamStatus,
   generateWithRetry,
   parseAiJson,
   stripMarkdownCodeFences,
 } from './gemini';
+import { formatAiResponseError } from './ai-client';
 import {
   detectBinaryMimeFromMagicBytes,
   validateUploadedDocument,
@@ -322,3 +325,79 @@ test('generateWithRetry fails fast when upstream 429 retryDelay exceeds maxDelay
   assert.equal(attempts, 1);
   assert.equal(sleepCalls, 0);
 });
+
+test('generateWithRetry immediately fails over to fallbackModel on daily-quota 429 and routes subsequent calls around cooling-down primary', async () => {
+  clearModelCooldowns();
+  const calledModels: string[] = [];
+  let sleepCalls = 0;
+  let nowMs = 1_700_000_000_000;
+
+  const mockClient = {
+    models: {
+      generateContent: async (params: { model: string }) => {
+        calledModels.push(params.model);
+        if (params.model === GEMINI_MODEL) {
+          throw new Error('429 RESOURCE_EXHAUSTED retryDelay: "83280s"');
+        }
+        return { text: 'lite-pool-ok' } as GenerateContentResponse;
+      },
+    },
+  };
+
+  try {
+    // Request 1: primary hits daily 429 (1388m), skips useless sleep, fails over immediately to gemini-3.1-flash-lite
+    const res1 = await generateWithRetry(
+      { model: GEMINI_MODEL, contents: 'demo pdf' },
+      {
+        client: mockClient,
+        maxRetries: 2,
+        maxDelayMs: 10_000,
+        fallbackModel: GEMINI_FAST_OCR_MODEL,
+        now: () => nowMs,
+        sleep: async () => {
+          sleepCalls += 1;
+        },
+      }
+    );
+    assert.equal(res1.text, 'lite-pool-ok');
+    assert.equal(sleepCalls, 0);
+    assert.deepEqual(calledModels, [GEMINI_MODEL, GEMINI_FAST_OCR_MODEL]);
+
+    // Request 2 (1 minute later): primary is in cooldown -> routes directly to gemini-3.1-flash-lite without wasting a 429 call
+    nowMs += 60_000;
+    const res2 = await generateWithRetry(
+      { model: GEMINI_MODEL, contents: 'next batch' },
+      {
+        client: mockClient,
+        maxRetries: 2,
+        fallbackModel: GEMINI_FAST_OCR_MODEL,
+        now: () => nowMs,
+      }
+    );
+    assert.equal(res2.text, 'lite-pool-ok');
+    assert.deepEqual(calledModels, [
+      GEMINI_MODEL,
+      GEMINI_FAST_OCR_MODEL,
+      GEMINI_FAST_OCR_MODEL,
+    ]);
+  } finally {
+    clearModelCooldowns();
+  }
+});
+
+test('formatAiResponseError formats >= 1 hour daily quota retry delays in hours and minutes instead of raw 1388 minutes', () => {
+  const msg = formatAiResponseError(
+    429,
+    {
+      code: 'AI_RATE_LIMITED',
+      error: 'AI সেবার অনুরোধের সীমা সাময়িকভাবে পূর্ণ হয়ে গেছে।',
+      retryAfterSeconds: 83_280, // 23h 8m
+    },
+    'fallback'
+  );
+  assert.ok(msg.includes('23 ঘণ্টা 8 মিনিট'));
+  assert.equal(msg.includes('1388 মিনিট'), false);
+  assert.ok(msg.includes('Settings > Secrets'));
+  assert.ok(msg.includes('০ API'));
+});
+

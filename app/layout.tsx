@@ -1,10 +1,12 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import {
   Hind_Siliguri,
   Plus_Jakarta_Sans,
   JetBrains_Mono,
 } from 'next/font/google';
+import 'katex/dist/katex.min.css';
 import './globals.css';
+import { PWAOfflineRuntime } from '@/src/components/pwa/PWAOfflineRuntime';
 
 const hindSiliguri = Hind_Siliguri({
   subsets: ['bengali', 'latin'],
@@ -27,10 +29,25 @@ const jetbrainsMono = JetBrains_Mono({
   display: 'swap',
 });
 
+export const viewport: Viewport = {
+  themeColor: '#1d4ed8',
+  width: 'device-width',
+  initialScale: 1,
+};
+
 export const metadata: Metadata = {
   title: 'প্রস্তুতি AI — Personal AI Job Preparation & Examination System',
   description:
     'Personal AI Job Preparation & Examination System featuring PDF Book Library with OCR, RAG Smart Reader, AI Question Lab & Bank, Timed Exam Center with Negative Marking, AI Evaluation, Current GK, Study Planner, Mistake Notebook, and Performance Analytics.',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'প্রস্তুতি AI',
+  },
+  icons: {
+    icon: '/icon.svg',
+    apple: '/apple-touch-icon.png',
+  },
   openGraph: {
     title: 'প্রস্তুতি AI — Personal AI Job Preparation & Examination System',
     description:
@@ -59,6 +76,7 @@ export default function RootLayout({
         suppressHydrationWarning
         className="bg-slate-50 text-slate-900 antialiased selection:bg-blue-100 selection:text-blue-900"
       >
+        <PWAOfflineRuntime />
         {children}
       </body>
     </html>

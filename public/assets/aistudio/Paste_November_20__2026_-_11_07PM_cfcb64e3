@@ -1,0 +1,1076 @@
+MASTER PROJECT INSTRUCTION
+
+JOB PREPARATION AI — COMPLETE PLATFORM EVOLUTION
+
+You are acting as a Principal Software Architect, Senior Full-Stack Engineer, AI Engineer, Database Architect, Security Engineer, and Product Designer.
+
+Your responsibility is to analyze and plan the evolution of my existing Job Preparation AI project into a comprehensive AI-powered Job Exam Preparation Platform.
+
+This is an existing project. You MUST inspect and understand the current codebase before recommending architectural changes.
+
+Do not rebuild the application from scratch. Preserve existing working features, design decisions, business logic, and compatible technologies.
+
+---
+
+PART 1 — EXISTING PROJECT CONTEXT
+
+1.1 Project Identity
+
+Project Name: Job Preparation AI
+
+Purpose:
+A personal and multi-user AI-powered platform for preparing for competitive job examinations, particularly in Bangladesh.
+
+Primary goal:
+Users should be able to upload their own books and study materials, analyze recent job examination trends, generate relevant questions, practice exams, understand answers and explanations, and monitor their preparation progress.
+
+1.2 Existing Technology Stack
+
+The project has been developed using Google Gemini AI Studio.
+
+Known technology stack:
+
+- Next.js 15.4.9
+- React 19.2.1
+- TypeScript 5.9.3
+- PostgreSQL
+- Drizzle ORM
+- Firebase Google Authentication
+- Gemini API
+- pgvector 0.8.5
+
+Source Code Repository:
+
+https://github.com/mdziaur6932-create/Job-Preparation
+
+Development Environment: Google Gemini AI Studio.
+
+IMPORTANT:
+Verify the actual versions, configuration, and implementation from the repository. The above information is contextual and must not replace source-code inspection.
+
+1.3 Existing Project Features
+
+The existing project includes or has been designed around:
+
+- PDF Book Upload
+- Smart Book Reader
+- AI Reader
+- Question Generator
+- Question Lab
+- Exam System
+- Written Answer Evaluation
+- General Knowledge Conversion
+- Current General Knowledge
+- AI Tutor
+- Study Planner
+- Revision System
+- Performance Analytics
+- Workspace Management
+
+Identify which features are fully implemented, partially implemented, or missing.
+
+Do not assume that a feature is complete merely because a UI component exists.
+
+---
+
+PART 2 — ZERO-COST POLICY
+
+This is a strict and permanent project requirement.
+
+I DO NOT want to activate any Paid API Billing.
+
+All architecture and development recommendations must respect the following:
+
+1. Use Gemini API Free Tier only, where the selected model and feature are eligible.
+2. Do not recommend enabling Google Cloud paid billing.
+3. Do not use paid Gemini models.
+4. Do not introduce paid AI API fallback services.
+5. Do not automatically subscribe to paid third-party services.
+6. Do not introduce mandatory paid storage, hosting, database, OCR, or document-processing services.
+7. Prefer free and open-source libraries when technically appropriate.
+8. Clearly identify any service that may require payment after exceeding free limits.
+9. Never assume that a product is completely free merely because it offers a free tier.
+10. If a required feature cannot reliably operate within the zero-paid-billing constraint, explain the limitation and propose alternatives.
+
+The current production AI model must not be changed without explicit approval and proper benchmarking.
+
+Do not introduce a paid fallback when Gemini Free Tier quota is exhausted.
+
+Quota exhaustion must be handled gracefully with clear Bengali messages.
+
+---
+
+PART 3 — GOOGLE DRIVE DUAL BOOK LIBRARY
+
+This is one of the most important permanent requirements.
+
+The platform must support two independent book libraries.
+
+3.1 Shared Book Library
+
+This library is controlled by the Application Owner.
+
+Requirements:
+
+- The Owner can upload books directly from the application.
+- Uploaded files must be saved in the Owner's Google Drive.
+- The application must maintain the relationship between each book and its Google Drive file.
+- The Owner can organize books by subject, category, examination, chapter, and other useful metadata.
+- The Owner can grant individual users access to specific books.
+- The Owner can revoke access whenever necessary.
+- The Owner can delete books.
+- The Owner can inspect book metadata, upload history, file size, and processing status.
+
+Members must not receive direct Google Drive access.
+
+3.2 Personal Book Library
+
+Each registered user must have a separate Personal Book Library.
+
+Requirements:
+
+- Users can upload their personal books through an in-app Upload Portal.
+- They must not need Google Drive accounts or Drive permissions.
+- Files must be stored in a separate Personal Book Storage area in the Owner's Google Drive.
+- Each user's files must be logically isolated using their authenticated internal user identity.
+- A user can access their own books.
+- Other users cannot access these books automatically.
+- The Application Owner can view and delete any user's uploaded book.
+- The Owner can grant selected users access to a particular Personal Book.
+- The Owner can revoke such access at any time.
+
+The application must not provide direct Google Drive folder links to ordinary members.
+
+3.3 Personal Book Sharing
+
+The Owner must be able to share a user's Personal Book with one or more selected users.
+
+Example:
+
+Member A uploads a Mathematics book.
+
+The Owner grants Member B and Member C permission to use it.
+
+Then:
+
+- Member B can read the book and create personal notes, questions, exams, and progress records.
+- Member C can independently use the same book.
+- Member B cannot access Member C's notes or progress.
+- Member C cannot access Member B's notes or progress.
+- Neither member can change the original book's ownership or sharing permissions.
+- Only the Owner controls book-sharing permissions.
+
+A shared Personal Book must remain associated with its original uploader and owner.
+
+3.4 Google Drive Storage Architecture
+
+Recommended logical structure:
+
+Google Drive
+└── Job Preparation AI
+├── Shared Book Library
+│   ├── Bangla
+│   ├── English
+│   ├── Mathematics
+│   ├── General Knowledge
+│   └── Other Subjects
+│
+└── Personal Book Library
+├── User A
+├── User B
+└── User C
+
+The actual storage implementation must be designed around secure Google Drive API access.
+
+Requirements:
+
+- Google Drive API v3.
+- Google Picker for selecting existing files where appropriate.
+- OAuth 2.0.
+- Evaluate the least-privilege "drive.file" scope first.
+- Do not request broad Drive access unless technically necessary and explicitly approved.
+- Explain OAuth verification and restricted-scope implications where applicable.
+- Store sensitive OAuth credentials securely on the server.
+- Encrypt refresh tokens at rest.
+- Never expose OAuth tokens or private Drive file IDs unnecessarily to clients.
+- Use server-side Drive operations.
+- Handle token expiration, revocation, file deletion, file movement, and account disconnection.
+
+Do not make files public.
+
+Do not create permanent public download links.
+
+---
+
+PART 4 — SUPPORTED BOOK AND DOCUMENT FORMATS
+
+The application must support:
+
+1. PDF
+2. Microsoft Word DOCX
+3. Microsoft Word DOC
+4. JPG
+5. JPEG
+6. PNG
+7. WebP
+
+The same supported format policy should apply to Shared and Personal Book Libraries, subject to safe file validation.
+
+4.1 Document Processing
+
+For PDF:
+
+- Extract text.
+- Detect chapters and headings.
+- Preserve page references.
+- Support scanned PDF through OCR.
+- Identify tables and structured content where possible.
+- Support Bengali and English text.
+
+For DOCX and DOC:
+
+- Extract text.
+- Preserve paragraph structure.
+- Detect headings and chapters.
+- Extract tables.
+- Preserve meaningful formatting information.
+- Support Bengali Unicode and English.
+- Avoid destroying the original document formatting.
+
+For images:
+
+- OCR printed text.
+- Support Bengali and English.
+- Identify page structure and important content.
+- Preserve image-to-page references.
+
+Original files must remain unchanged in Google Drive.
+
+Processing output must be stored separately from original files.
+
+The system should reuse previously processed content rather than repeatedly processing the same file unnecessarily.
+
+---
+
+PART 5 — SECURE BOOK READER AND ORIGINAL FILE PROTECTION
+
+The Owner has made the following decision:
+
+Original PDF/DOC/DOCX Download: NOT ALLOWED.
+
+Members must read and use books inside the application.
+
+Requirements:
+
+- No Original Book Download button.
+- No direct Google Drive download URL in the frontend.
+- No publicly accessible original files.
+- Backend must verify authorization before retrieving file content.
+- Implement an in-app document reader.
+- Use appropriate secure rendering methods.
+- Support page navigation, zoom, search, and reading progress.
+- Support PDF, Word documents, and images through suitable rendering pipelines.
+- Do not send original file download endpoints to ordinary members.
+
+For Word documents, provide an in-app reader that preserves meaningful layout and formatting as closely as reasonably possible.
+
+Important security limitation:
+Do not claim that screenshots, screen recording, OCR, or all forms of copying can be completely prevented. Clearly distinguish reasonable access protection from impossible copy-proof guarantees.
+
+---
+
+PART 6 — USER ROLES AND PERMISSION ARCHITECTURE
+
+Implement a server-enforced role and permission architecture.
+
+Required roles:
+
+1. Owner
+2. Admin
+3. Member
+
+The Owner must have ultimate control over:
+
+- User management.
+- Shared Book Library.
+- Personal Book Library.
+- Book permissions.
+- Feature permissions.
+- Google Drive connection.
+- Upload restrictions.
+- Book deletion.
+- Access logs.
+
+Admin permissions must be explicitly delegated by the Owner.
+
+Admins must not independently control the Owner's Google Drive credentials or delete the Owner's original files without explicit authorization.
+
+Members can use only the books and features permitted to them.
+
+6.1 Per-Book Permissions
+
+The Owner must be able to configure permissions separately for every user and every book.
+
+Required permissions:
+
+- View Book
+- AI Reader
+- PDF/Text Extraction
+- Generate Questions
+- Take Exam
+- AI Tutor
+- Notes
+- Revision
+- Download Original
+
+The Download Original permission must remain permanently disabled under the current project policy.
+
+The Owner must be able to:
+
+- Grant permissions.
+- Revoke permissions.
+- Update permissions.
+- Set optional expiration dates.
+- View access history.
+
+6.2 Backend Authorization
+
+Every protected API request must verify:
+
+1. Firebase authentication.
+2. User account status.
+3. Book ownership or authorized access.
+4. Per-book permission.
+5. Feature permission.
+6. Google Drive connection and file status.
+7. Permission expiration or revocation.
+
+Never trust user IDs, book IDs, file IDs, or permission claims supplied by the frontend without server-side validation.
+
+Do not rely only on hiding frontend buttons.
+
+Every AI API route must enforce the same authorization rules.
+
+6.3 Permission Revocation
+
+When access is revoked:
+
+- New requests must be denied immediately.
+- Cached permissions must be invalidated or revalidated.
+- Existing processing jobs must not continue exposing restricted content.
+- User access logs must record the relevant event.
+
+Deleting a book or revoking access must not falsely imply that previously downloaded, copied, or screenshot content can be remotely erased.
+
+---
+
+PART 7 — USER-SPECIFIC STUDY DATA
+
+Multiple users may study the same book.
+
+Their study data must remain completely separate.
+
+For every user, maintain independent:
+
+- Notes
+- Bookmarks
+- Reading Progress
+- Generated Questions
+- Saved Question Sets
+- Exam Attempts
+- Exam Results
+- Written Answers
+- AI Evaluations
+- Revision Lists
+- Study Plans
+- Performance Analytics
+
+Example:
+
+Member A and Member B use the same Mathematics book.
+
+Both can create separate questions and exams.
+
+Neither can access the other's private study records.
+
+Book content may be shared, but personal study data must remain isolated.
+
+---
+
+PART 8 — QUESTION GENERATION SYSTEM
+
+Question generation must support multiple sources.
+
+Possible sources:
+
+- Shared Books
+- Personal Books
+- Selected chapters
+- Selected topics
+- User-provided text
+- Recent Job Exam Trend Analysis
+
+Supported question types:
+
+- MCQ
+- Written Questions
+- Short Questions
+- True/False
+- Fill in the Blanks
+- Mathematics Problems
+- English Grammar Questions
+- Mixed Question Sets
+- Model Tests
+
+The user should be able to configure:
+
+- Subject
+- Book
+- Chapter
+- Topic
+- Number of questions
+- Difficulty
+- Question type
+- Marks
+- Time limit
+- Language
+- Whether answers and explanations should be included
+
+Questions should be newly generated based on the source material and should not simply reproduce entire copyrighted passages or question collections.
+
+---
+
+PART 9 — SOURCE-BASED ANSWER AND EXPLANATION SYSTEM
+
+This is a mandatory feature.
+
+When a user answers or reviews a generated question, the application must display a well-structured answer.
+
+Each answer should contain, where available:
+
+1. Original Question.
+2. Correct Answer.
+3. Book-Based Explanation.
+4. Easy-to-Understand Explanation.
+5. Source Book Name.
+6. Chapter Name.
+7. Page Number.
+8. Relevant source passage, where appropriate.
+
+The interface must clearly associate each answer and explanation with its corresponding question.
+
+9.1 Answer Source Priority
+
+The system must follow this order:
+
+First:
+Search the uploaded book or books used for generating the question.
+
+If the answer exists in the book:
+
+- Use the book's answer.
+- Show the book's explanation if available.
+- Show the relevant chapter and page reference.
+- Clearly label the answer as "Book Answer".
+
+Second:
+If the answer cannot be found in the uploaded book:
+
+- AI may answer using external knowledge.
+- If necessary and available, use reliable online sources.
+- Verify the factual claims against credible sources.
+- Display source names and clickable URLs.
+- Clearly label the answer as "AI-Generated Answer".
+- State that the answer was not found in the uploaded book.
+
+Third:
+If book information and external information conflict:
+
+- Display the difference.
+- Show the book's position separately.
+- Show the verified external information separately.
+- Do not silently replace the book's answer.
+
+If reliable external sources cannot be verified:
+
+- Do not invent citations.
+- Mark the answer as Unverified.
+- Explain the limitation.
+
+Possible answer status labels:
+
+- Book Answer
+- AI Answer
+- Mixed Answer
+- Unverified
+
+The explanation must be in clear Bengali or the selected language.
+
+PDF exports must preserve these answer-source labels and references.
+
+---
+
+PART 10 — QUESTION PAPER PDF EXPORT
+
+Users must be able to download generated question sets as PDF.
+
+Requirements:
+
+1. PDF Preview.
+2. Download Question Paper.
+3. Download Question + Answer.
+4. Download Answer Key Separately.
+5. Download Detailed Solution.
+6. Save generated question sets in the user's account.
+7. Reopen saved question sets.
+8. Edit saved question sets.
+9. Generate a new PDF after editing.
+
+PDF customization:
+
+- Paper Title.
+- Subject Name.
+- Institution Name.
+- Exam Name.
+- Exam Date.
+- Time.
+- Full Marks.
+- Question Numbering.
+- Header and Footer.
+- Page Numbers.
+- A4 Page Size.
+- Bengali and English text.
+- Suitable font embedding.
+- Proper mathematical notation and formatting.
+
+The exported PDF must render Bengali Unicode correctly.
+
+The generated question paper PDF is downloadable.
+
+This does NOT authorize downloading the original uploaded book.
+
+---
+
+PART 11 — RECENT JOB EXAM TREND INTELLIGENCE
+
+This is another major product feature.
+
+The platform must analyze recent job examination questions and identify which topics have appeared in those examinations.
+
+Then it must match those topics against the user's uploaded books and generate relevant practice questions.
+
+Suggested feature name:
+
+Recent Exam Trend Intelligence
+
+11.1 Examination Categories
+
+The system should support categories such as:
+
+- BCS
+- Government Bank Recruitment
+- Private Bank Recruitment
+- Primary Teacher Recruitment
+- NTRCA and Teacher Recruitment
+- Ministry Recruitment
+- Department and Directorate Recruitment
+- Autonomous Institutions
+- Other Competitive Job Examinations
+
+The category list must be configurable and extensible.
+
+11.2 Examination Data Sources
+
+The system may use:
+
+1. User-uploaded previous examination question papers.
+2. Reliable online sources and official publications where available.
+3. Manually entered examination questions and topic information.
+
+Every analyzed examination must maintain:
+
+- Examination Name
+- Organization
+- Examination Date
+- Source
+- Source URL, if available
+- Question Paper File Reference, if uploaded
+- Analysis Status
+- Topic List
+- Confidence Level
+- Verification Status
+
+Never fabricate recent examination questions, dates, or sources.
+
+If no verified question paper is available, clearly state that the analysis is incomplete.
+
+11.3 Topic Identification
+
+AI should identify:
+
+- Subject
+- Topic
+- Subtopic
+- Question Type
+- Difficulty
+- Knowledge Area
+- Related Book Chapter
+
+Example:
+
+Bangla:
+
+- Samas
+- Sandhi
+- Idioms
+- Grammar
+
+English:
+
+- Tense
+- Voice
+- Preposition
+- Vocabulary
+
+Mathematics:
+
+- Percentage
+- Ratio
+- Profit and Loss
+- Time and Work
+
+General Knowledge:
+
+- Bangladesh Constitution
+- Liberation War
+- Geography
+- International Affairs
+
+ICT:
+
+- Number System
+- Networking
+- Computer Fundamentals
+
+These are examples, not a fixed or exhaustive list.
+
+11.4 Matching With Uploaded Books
+
+After identifying topics:
+
+- Search Shared Book Library and authorized Personal Books.
+- Identify books and chapters covering those topics.
+- Match extracted content to identified topics.
+- Show which topics are available and which are missing.
+- Do not generate book-based questions from content that does not exist in the selected books.
+- Keep source references for generated questions.
+
+11.5 Trend-Based Question Generation
+
+Generate new practice questions using:
+
+- Recent examination topics.
+- Uploaded book content.
+- Relevant chapter information.
+- Previous examination question patterns.
+- Selected difficulty and question types.
+
+Do not copy previous examination questions wholesale.
+
+The objective is to create new questions that test similar knowledge and skills.
+
+11.6 Time Range and Topic Distribution
+
+The user should be able to select a trend analysis period, such as:
+
+- Last 6 months
+- Last 1 year
+- Last 2 years
+- Custom date range
+
+The system should also support filtering by examination category and organization.
+
+Proposed default distribution:
+
+- 70% questions from high-priority recent exam topics.
+- 30% questions from other important related topics in uploaded books.
+
+This is a configurable starting recommendation, NOT a permanent fixed rule.
+
+The user must be able to change the distribution.
+
+The system must explain that historical topic frequency does not guarantee future examination questions.
+
+11.7 Trend Dashboard
+
+Create a dashboard showing:
+
+- Analyzed examinations.
+- Exam dates.
+- Source verification status.
+- Topic frequency.
+- Subject-wise distribution.
+- Frequently repeated topics.
+- High-priority topics.
+- Available uploaded-book matches.
+- Missing topics.
+- Generated question sets.
+- Trend-based mock tests.
+
+Never present unverified estimates as factual statistics.
+
+---
+
+PART 12 — PERSONALIZED EXAM PREPARATION
+
+The platform should use the user's own learning history to recommend study priorities.
+
+Possible inputs:
+
+- Exam Trend Analysis.
+- Uploaded Book Content.
+- Previous Exam Results.
+- Incorrect Answers.
+- Weak Topics.
+- Revision History.
+- Study Time.
+- Reading Progress.
+
+Possible outputs:
+
+- Recommended Topics.
+- Weak Topic List.
+- Daily Study Plan.
+- Revision Schedule.
+- Personalized Mock Tests.
+- Performance Analysis.
+
+The system must distinguish verified exam trends from personalized AI recommendations.
+
+---
+
+PART 13 — OWNER ADMINISTRATION AND MANAGEMENT
+
+Create an Owner Dashboard with separate management areas.
+
+Book Storage Management
+
+- Shared Book Library.
+- Personal Book Library.
+- Book Metadata.
+- File Storage Status.
+- Processing Status.
+- Upload History.
+- File Size.
+- Storage Usage.
+- Delete Management.
+
+User Management
+
+- User List.
+- User Status.
+- Role Management.
+- User Upload History.
+- User Book List.
+- Permission Management.
+- Access History.
+
+Book Sharing Management
+
+- Select a book.
+- Select users.
+- Assign feature permissions.
+- Set optional expiration.
+- Revoke permissions.
+- View sharing history.
+
+Exam Trend Management
+
+- Examination Sources.
+- Uploaded Question Papers.
+- Analysis Results.
+- Topic Management.
+- Verification Status.
+- Trend Period.
+- Category Management.
+
+The Owner must be able to control the system without directly editing the database.
+
+---
+
+PART 14 — DATABASE AND ARCHITECTURE REQUIREMENTS
+
+Preserve the existing PostgreSQL + Drizzle architecture unless a verified technical limitation requires a change.
+
+Inspect the current schema before proposing changes.
+
+Possible logical data entities include:
+
+- Users
+- User Roles
+- Drive Connections
+- Shared Books
+- Personal Books
+- Book Permissions
+- Feature Permissions
+- Book Processing Jobs
+- Extracted Content
+- Chapters
+- Page References
+- Questions
+- Question Sets
+- Answer Explanations
+- Source Citations
+- Exam Papers
+- Exam Trend Analyses
+- Topic Frequencies
+- Topic Book Matches
+- Personal Notes
+- Bookmarks
+- Exam Attempts
+- User Progress
+- Access Audit Logs
+
+These are conceptual entities, not an instruction to create duplicate tables.
+
+Reuse existing entities where possible.
+
+Before any database modification:
+
+1. Inspect current schema.
+2. Identify existing relationships.
+3. Identify missing capabilities.
+4. Propose a migration plan.
+5. Explain data migration risks.
+6. Wait for explicit approval.
+
+Do not run migrations or alter production records during the initial audit.
+
+---
+
+PART 15 — SECURITY, PRIVACY AND RELIABILITY
+
+Perform a comprehensive security review covering:
+
+- Firebase authentication.
+- Server-side authorization.
+- IDOR prevention.
+- Book-level access control.
+- Feature-level permissions.
+- Google Drive token protection.
+- Upload validation.
+- File type verification.
+- File size limits.
+- Malware and malicious document handling.
+- API rate limiting.
+- Error sanitization.
+- User data isolation.
+- Secure document rendering.
+- Cache invalidation.
+- Permission revocation.
+- Audit logging.
+- Backup and recovery.
+
+Do not expose internal API errors or Google credentials to the frontend.
+
+Do not treat client-side UI restrictions as security controls.
+
+Do not claim that application-level file protection can prevent all screenshots or copying.
+
+---
+
+PART 16 — DEVELOPMENT AND IMPLEMENTATION RULES
+
+The existing project must evolve incrementally.
+
+Do not rewrite the application.
+
+Do not replace the current stack without a documented technical justification.
+
+Do not remove existing working features.
+
+Do not change production AI model defaults without approval.
+
+Do not activate Paid API Billing.
+
+Do not silently modify database schemas.
+
+Do not execute unrelated deferred Sprint tasks.
+
+IMPORTANT EXISTING SPRINT GUARDRAILS:
+
+- S1-T1 AI Reliability was previously approved and implemented.
+- S1-T2 Authentication and Rate Limiting is deferred.
+- S1-T3 IDOR, Persistence and Performance work is deferred.
+- S1-T4 Evaluation Fallback and Exam Auto-submit is deferred.
+- S1-T5 PDF Chapter Heading work is deferred.
+- S1-T6 pgvector RAG and Indexes is deferred.
+- S1-T7 RLS is deferred.
+
+Do not start these deferred tasks as part of this new feature-planning exercise.
+
+If a new feature depends on one of these tasks, document the dependency and wait for explicit approval.
+
+---
+
+PART 17 — REQUIRED INITIAL DELIVERABLE
+
+For this first execution, perform an AUDIT AND ARCHITECTURE PLANNING exercise only.
+
+DO NOT IMPLEMENT NEW FEATURES YET.
+
+Do not edit source code.
+
+Do not edit configuration files.
+
+Do not install packages.
+
+Do not run database migrations.
+
+Do not modify the database.
+
+Do not change environment variables.
+
+Do not change Google Drive settings.
+
+Do not create or expose credentials.
+
+Do not change billing.
+
+Do not push commits to GitHub.
+
+Deliverable 1: Existing Project Audit
+
+Inspect the actual repository.
+
+Report:
+
+- Current project architecture.
+- Existing features.
+- Current upload workflow.
+- Current storage architecture.
+- Current database architecture.
+- Authentication implementation.
+- Existing permission checks.
+- Existing AI integration.
+- Existing PDF and Word processing.
+- Existing question generation.
+- Existing PDF export capabilities.
+- Existing exam management.
+- Existing study data isolation.
+
+For every finding, classify it as:
+
+- VERIFIED IN SOURCE CODE
+- VERIFIED IN RUNTIME
+- PARTIALLY IMPLEMENTED
+- NOT IMPLEMENTED
+- UNKNOWN / REQUIRES TESTING
+
+Do not claim runtime verification based only on reading source code.
+
+Deliverable 2: Feature Gap Analysis
+
+For each requested feature, report:
+
+- Existing implementation.
+- Missing functionality.
+- Files likely to require modification.
+- New components or modules needed.
+- API changes.
+- Database dependencies.
+- Security implications.
+- Testing requirements.
+
+Deliverable 3: Final Target Architecture
+
+Provide:
+
+- Application Architecture.
+- Google Drive Integration Architecture.
+- Dual Book Library Architecture.
+- Upload Architecture.
+- Permission Architecture.
+- Document Processing Architecture.
+- Secure Reader Architecture.
+- Question Generation Architecture.
+- Answer and Explanation Architecture.
+- PDF Export Architecture.
+- Recent Exam Trend Intelligence Architecture.
+- User Data Isolation Architecture.
+- Owner Dashboard Architecture.
+
+Use clear architecture diagrams where useful.
+
+Deliverable 4: Database Impact Analysis
+
+Show:
+
+- Existing tables.
+- Proposed logical additions.
+- Required relationships.
+- Unique constraints.
+- Index recommendations.
+- Data isolation requirements.
+- Migration risks.
+
+Do not execute any migration.
+
+Deliverable 5: Zero-Cost Feasibility Report
+
+For each proposed technology or service, explain:
+
+- Whether a usable free option exists.
+- Its limitations.
+- Quotas or storage constraints.
+- Whether it requires billing activation.
+- Whether it can operate without a paid plan.
+- Open-source alternatives.
+
+Do not recommend enabling billing.
+
+Deliverable 6: Phased Development Roadmap
+
+Create a dependency-aware roadmap.
+
+Each phase must include:
+
+- Objective.
+- Features.
+- Source files likely to change.
+- Database impact.
+- Security considerations.
+- Testing strategy.
+- Acceptance criteria.
+- Rollback considerations.
+
+Recommend a practical implementation order.
+
+Do not start implementation.
+
+Deliverable 7: Final Approval Checklist
+
+List all important architectural decisions and identify:
+
+- Decisions already confirmed by the Owner.
+- Recommendations awaiting Owner approval.
+- Unknown technical constraints.
+- Questions that must be resolved before implementation.
+
+Do not ask the Owner to repeat decisions already explicitly confirmed.
+
+---
+
+FINAL OPERATING INSTRUCTION
+
+Treat this document as the master product requirements and architecture direction for Job Preparation AI.
+
+Your first responsibility is to understand the existing application and produce an accurate, evidence-based audit and development blueprint.
+
+Do not begin implementation until the Owner explicitly approves the next development phase.
+
+Never sacrifice security, data integrity, existing functionality, or the zero-paid-billing policy for development speed.
+
+Respond to the Owner in Bengali. Use English for technical names, file paths, code symbols, and standard software terminology.
+
+Be precise, transparent, and evidence-based. Never claim that a feature is implemented unless the source code or runtime behavior proves it.

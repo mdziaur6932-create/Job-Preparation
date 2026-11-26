@@ -10,12 +10,17 @@ import {
   Globe,
   CalendarCheck,
   BarChart3,
+  ScanText,
   Menu,
   X,
   LogIn,
   LogOut,
+  Lock,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { useWorkspace } from './WorkspaceProvider';
+import { PWAInstallButton } from './pwa/PWAInstallButton';
 import type { ModuleId } from '@/src/types/system';
 
 interface NavModule {
@@ -83,14 +88,28 @@ export const MODULES: NavModule[] = [
     titleBn: 'পারফরম্যান্স ও AI শিক্ষক',
     icon: BarChart3,
   },
+  {
+    id: 'ocr-studio',
+    index: '09',
+    titleEn: 'OCR Studio',
+    titleBn: 'ফটো / স্ক্রিনশট / PDF OCR',
+    icon: ScanText,
+  },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const {
     data,
     user,
+    authLoading,
+    authStatus,
+    authError,
+    clearAuthError,
     syncing,
     syncError,
+    retryCloudSync,
+    aiAuthPrompt,
+    dismissAiAuthPrompt,
     activeModule,
     setActiveModule,
     signInWithGoogle,
@@ -98,6 +117,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   } = useWorkspace();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const isSigningIn = authStatus === 'signing_in';
+  const isSigningOut = authStatus === 'signing_out';
+  const isAuthInitializing = authLoading || authStatus === 'initializing';
 
   const currentMod =
     MODULES.find((m) => m.id === activeModule) ?? MODULES[0];
@@ -127,7 +149,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const renderSidebarNav = () => (
     <nav aria-label="প্রধান মডিউল নেভিগেশন" className="flex-1 overflow-y-auto px-3 py-4">
       <div className="mb-2 px-3 text-xs font-medium text-slate-500">
-        ৮টি প্রধান মডিউল
+        ৯টি প্রধান মডিউল
       </div>
       <ul className="space-y-1">
         {MODULES.map((mod) => {
@@ -224,13 +246,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               </div>
               <button
                 type="button"
+                disabled={isSigningOut}
                 onClick={() => void signOutUser()}
                 aria-label="সাইন আউট"
-                className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors shrink-0"
+                className="rounded-md p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50 transition-colors shrink-0"
               >
                 <LogOut className="h-4 w-4" />
               </button>
             </div>
+          ) : isAuthInitializing ? (
+            <p className="mt-2 text-xs text-slate-500 leading-relaxed">
+              অ্যাকাউন্ট সেশন যাচাই হচ্ছে...
+            </p>
           ) : (
             <p className="mt-2 text-xs text-slate-500 leading-relaxed">
               ব্যক্তিগত ক্লাউড সংরক্ষণের জন্য উপরে Google দিয়ে সাইন-ইন করুন।
@@ -304,8 +331,14 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             </div>
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            {user ? (
+          <div className="flex items-center gap-2.5 shrink-0">
+            <PWAInstallButton />
+            {isAuthInitializing ? (
+              <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-medium text-slate-500 whitespace-nowrap shrink-0">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <span>সেশন যাচাই হচ্ছে...</span>
+              </span>
+            ) : user ? (
               <button
                 type="button"
                 onClick={() => setActiveModule('exam-center')}
@@ -316,22 +349,57 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             ) : (
               <button
                 type="button"
+                disabled={isSigningIn}
                 onClick={() => void signInWithGoogle()}
-                className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-800 transition-colors whitespace-nowrap shrink-0"
+                className="inline-flex items-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-60 transition-colors whitespace-nowrap shrink-0"
               >
-                <LogIn className="h-3.5 w-3.5" />
-                <span>Google সাইন-ইন</span>
+                {isSigningIn ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <LogIn className="h-3.5 w-3.5" />
+                )}
+                <span>{isSigningIn ? 'সাইন-ইন হচ্ছে...' : 'Google সাইন-ইন'}</span>
               </button>
             )}
           </div>
         </header>
 
+        {!aiAuthPrompt && authError && (
+          <div
+            role="alert"
+            className="flex items-center justify-between gap-3 border-b border-red-200 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-800 lg:px-8"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <AlertCircle className="h-4 w-4 shrink-0 text-red-700" />
+              <span>{authError}</span>
+            </div>
+            <button
+              type="button"
+              onClick={clearAuthError}
+              aria-label="ত্রুটি বার্তা বন্ধ করুন"
+              className="rounded p-1 text-red-700 hover:bg-red-100 shrink-0"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        )}
+
         {syncError && (
           <div
             role="alert"
-            className="border-b border-red-200 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-800 lg:px-8"
+            className="flex flex-wrap items-center justify-between gap-2 border-b border-red-200 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-800 lg:px-8"
           >
-            {syncError}
+            <span>{syncError}</span>
+            {user && (
+              <button
+                type="button"
+                disabled={syncing}
+                onClick={() => void retryCloudSync()}
+                className="rounded-md border border-red-300 bg-white px-2.5 py-1 text-[11px] font-semibold text-red-800 hover:bg-red-100 disabled:opacity-50"
+              >
+                {syncing ? 'সংযোগ হচ্ছে...' : 'পুনরায় চেষ্টা করুন'}
+              </button>
+            )}
           </div>
         )}
 
@@ -339,6 +407,97 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* Bengali Google Sign-In Prompt for Guest Mode AI Feature Access */}
+      {aiAuthPrompt && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ai-signin-dialog-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+        >
+          <div
+            className="fixed inset-0 bg-slate-900/50"
+            onClick={() => {
+              if (!isSigningIn) dismissAiAuthPrompt();
+            }}
+            aria-hidden="true"
+          />
+          <div className="relative z-10 w-full max-w-lg rounded-xl border border-slate-200 bg-white p-6 shadow-xl">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                  <Lock className="h-4 w-4" />
+                </div>
+                <div>
+                  <h2
+                    id="ai-signin-dialog-title"
+                    className="text-base font-bold text-slate-900"
+                  >
+                    Google সাইন-ইন প্রয়োজন
+                  </h2>
+                  <p className="text-xs font-medium text-slate-500">
+                    {aiAuthPrompt.featureName}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isSigningIn}
+                onClick={dismissAiAuthPrompt}
+                aria-label="বন্ধ করুন"
+                className="rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+
+            <p className="mt-4 text-sm leading-relaxed text-slate-700">
+              {aiAuthPrompt.message}
+            </p>
+            <p className="mt-2 text-xs text-slate-500 leading-relaxed">
+              সাইন-ইন সম্পন্ন হলে আপনি পুনরায় এই AI ফিচারটি ব্যবহার করতে পারবেন।
+            </p>
+
+            {authError && (
+              <div
+                role="alert"
+                data-testid="signin-modal-error"
+                className="mt-4 flex items-start gap-2.5 rounded-lg border border-red-200 bg-red-50 p-3 text-xs font-medium leading-relaxed text-red-800"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-700" />
+                <span>{authError}</span>
+              </div>
+            )}
+
+            <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                disabled={isSigningIn}
+                onClick={dismissAiAuthPrompt}
+                className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors sm:whitespace-nowrap"
+              >
+                এখন নয়, Guest Mode-এ থাকুন
+              </button>
+              <button
+                type="button"
+                disabled={isSigningIn}
+                onClick={() => void signInWithGoogle()}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-blue-700 px-4 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-60 transition-colors sm:whitespace-nowrap"
+              >
+                {isSigningIn ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin shrink-0" />
+                ) : (
+                  <LogIn className="h-3.5 w-3.5 shrink-0" />
+                )}
+                <span>
+                  {isSigningIn ? 'Google সাইন-ইন হচ্ছে...' : 'Google দিয়ে সাইন-ইন করুন'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

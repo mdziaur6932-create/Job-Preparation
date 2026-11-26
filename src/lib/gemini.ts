@@ -6,12 +6,34 @@ import {
 import { NextRequest, NextResponse } from 'next/server';
 
 export const GEMINI_MODEL = 'gemini-4-hydrogen';
+export const GEMINI_FAST_OCR_MODEL = 'gemini-3.1-flash-lite';
 export const GEMINI_EMBED_MODEL = 'gemini-embedding-2';
 
 export const DEFAULT_AI_TIMEOUT_MS = 90_000;
 export const DEFAULT_PDF_AI_TIMEOUT_MS = 120_000;
 
 let cachedClient: GoogleGenAI | null = null;
+let testClientOverride: GenerateWithRetryOptions['client'] | null = null;
+
+/**
+ * Test-only hook to prevent unit/integration tests from invoking real Gemini APIs.
+ * Strictly rejected outside NODE_ENV === 'test'.
+ */
+export function setGeminiClientForTesting(
+  client: GenerateWithRetryOptions['client'] | null
+): void {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('setGeminiClientForTesting can only be used in test environments.');
+  }
+  testClientOverride = client;
+}
+
+export function getGeminiClientForTesting(): GenerateWithRetryOptions['client'] | null {
+  if (process.env.NODE_ENV !== 'test') {
+    return null;
+  }
+  return testClientOverride;
+}
 
 export class AiConfigError extends Error {
   constructor(message: string) {
@@ -95,11 +117,28 @@ export function stripMarkdownCodeFences(raw: string): string {
   return trimmed;
 }
 
+/**
+ * Protects unescaped single-backslash LaTeX commands inside JSON string literals
+ * whose first letter collides with a valid JSON escape (`\f`, `\t`, `\b`, `\r`, `\n`),
+ * such as `\frac{4}{5}` (otherwise `JSON.parse` turns `\f` into ASCII Form Feed and leaves `rac{4}{5}`),
+ * `\times`, `\theta`, `\tan`, `\tau`, `\text`, `\therefore`, `\triangle`, `\beta`, `\binom`, `\bar`,
+ * `\begin`, `\right`, `\rho`, `\root`, `\neq`, `\nabla`, `\nu`, `\forall`.
+ *
+ * Strictly preserves already-escaped `\\frac` and ordinary JSON escapes (`\n`, `\t`, `\r`, `\"`).
+ */
+export function protectJsonLatexBackslashes(rawJson: string): string {
+  if (!rawJson || !rawJson.includes('\\')) return rawJson;
+  return rawJson.replace(
+    /(\\+)(?=(?:frac|forall|times|theta|tan|tau|text|therefore|triangle|beta|binom|bar|begin|right|rho|root|neq|nabla|nu)\b)/g,
+    (slashes: string) => (slashes.length % 2 === 1 ? `${slashes}\\` : slashes)
+  );
+}
+
 export function parseAiJson<T>(
   rawText: string | undefined,
   expectedType?: 'object' | 'array'
 ): T {
-  const cleaned = stripMarkdownCodeFences(rawText ?? '');
+  const cleaned = protectJsonLatexBackslashes(stripMarkdownCodeFences(rawText ?? ''));
   if (!cleaned) {
     throw new AiResponseParseError('AI returned an empty JSON payload.');
   }
@@ -237,14 +276,94 @@ function defaultSleep(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+const MAX_MODEL_COOLDOWN_MS = 15 * 60_000; // Cap circuit-breaker at 15 min so upgraded keys / quota resets recover promptly
+const DEFAULT_429_COOLDOWN_MS = 90_000;
+const modelCooldownUntil = new Map<string, number>();
+
+export function clearModelCooldowns(): void {
+  modelCooldownUntil.clear();
+}
+
+export function getModelCooldownRemainingMs(
+  model: string,
+  nowMs: number = Date.now()
+): number {
+  const until = modelCooldownUntil.get(model);
+  if (!until) return 0;
+  const remaining = until - nowMs;
+  if (remaining <= 0) {
+    modelCooldownUntil.delete(model);
+    return 0;
+  }
+  return remaining;
+}
+
+export function markModelRateLimited(
+  model: string,
+  retryDelayMs: number | null,
+  nowMs: number = Date.now()
+): void {
+  const rawDuration =
+    retryDelayMs !== null && retryDelayMs > 0
+      ? retryDelayMs
+      : DEFAULT_429_COOLDOWN_MS;
+  // Only enter circuit-breaker cooldown for sustained rate limits (>= 15s)
+  if (rawDuration < 15_000) return;
+  const boundedDuration = Math.min(MAX_MODEL_COOLDOWN_MS, rawDuration);
+  modelCooldownUntil.set(model, nowMs + boundedDuration);
+}
+
+function sanitizeParamsForTargetModel(
+  params: GenerateContentParameters,
+  targetModel: string
+): GenerateContentParameters {
+  const currentConfig = params.config;
+  if (!currentConfig?.thinkingConfig) {
+    return { ...params, model: targetModel };
+  }
+
+  const level = String(currentConfig.thinkingConfig.thinkingLevel ?? '').toUpperCase();
+  // gemini-3.1-flash-lite does not support XHIGH; gemini-4-* does not support MINIMAL
+  if (targetModel === GEMINI_FAST_OCR_MODEL && level === 'XHIGH') {
+    return {
+      ...params,
+      model: targetModel,
+      config: {
+        ...currentConfig,
+        thinkingConfig: {
+          ...currentConfig.thinkingConfig,
+          thinkingLevel: 'LOW' as never,
+        },
+      },
+    };
+  }
+  if (targetModel === GEMINI_MODEL && level === 'MINIMAL') {
+    return {
+      ...params,
+      model: targetModel,
+      config: {
+        ...currentConfig,
+        thinkingConfig: {
+          ...currentConfig.thinkingConfig,
+          thinkingLevel: 'LOW' as never,
+        },
+      },
+    };
+  }
+
+  return { ...params, model: targetModel };
+}
+
 export interface GenerateWithRetryOptions {
   maxRetries?: number;
   baseDelayMs?: number;
   maxDelayMs?: number;
   timeoutMs?: number;
   signal?: AbortSignal;
-  /** Optional explicit fallback model; not used unless provided by caller. */
+  /** Optional explicit fallback model; enables automatic cross-model failover & cooldown routing when provided. */
   fallbackModel?: string;
+  /** When true, stop immediately on HTTP 429 / RESOURCE_EXHAUSTED without retrying or fallback (Free-Tier quota protection). */
+  stopOnRateLimit?: boolean;
   /** Dependency injection hook for unit tests. */
   client?: {
     models: {
@@ -255,6 +374,8 @@ export interface GenerateWithRetryOptions {
   };
   /** Dependency injection hook for deterministic backoff unit tests. */
   sleep?: (ms: number, signal?: AbortSignal) => Promise<void>;
+  /** Optional clock override for deterministic cooldown tests. */
+  now?: () => number;
 }
 
 async function runSingleAttemptWithTimeout(
@@ -334,9 +455,43 @@ export async function generateWithRetry(
     timeoutMs = DEFAULT_AI_TIMEOUT_MS,
     signal,
     fallbackModel,
-    client = getGeminiClient(),
+    stopOnRateLimit = false,
+    client = testClientOverride ?? getGeminiClient(),
     sleep = defaultSleep,
+    now = Date.now,
   } = options;
+
+  const primaryModel = String(params.model);
+  const canUseFallback = Boolean(
+    fallbackModel && fallbackModel !== primaryModel && !stopOnRateLimit
+  );
+
+  // If primary model already hit sustained 429 daily/minute quota cooldown and a healthy
+  // fallback model with its own separate quota pool is configured, route directly to it.
+  if (
+    canUseFallback &&
+    fallbackModel &&
+    getModelCooldownRemainingMs(primaryModel, now()) > 0 &&
+    getModelCooldownRemainingMs(fallbackModel, now()) === 0
+  ) {
+    try {
+      return await runSingleAttemptWithTimeout(
+        client,
+        sanitizeParamsForTargetModel(params, fallbackModel),
+        timeoutMs,
+        signal
+      );
+    } catch (fallbackErr) {
+      if (extractUpstreamStatus(fallbackErr) === 429) {
+        markModelRateLimited(
+          fallbackModel,
+          extractRetryDelayMs(fallbackErr),
+          now()
+        );
+      }
+      throw fallbackErr;
+    }
+  }
 
   let lastError: unknown;
 
@@ -350,12 +505,21 @@ export async function generateWithRetry(
         throw error;
       }
 
+      const status = extractUpstreamStatus(error);
+      const hintedDelay = extractRetryDelayMs(error);
+
+      if (status === 429) {
+        markModelRateLimited(primaryModel, hintedDelay, now());
+        if (stopOnRateLimit) {
+          throw error;
+        }
+      }
+
       const canRetry = attempt < maxRetries && isRetryableAiError(error);
       if (!canRetry) {
         break;
       }
 
-      const hintedDelay = extractRetryDelayMs(error);
       if (hintedDelay !== null && hintedDelay > maxDelayMs) {
         break;
       }
@@ -369,25 +533,38 @@ export async function generateWithRetry(
     }
   }
 
-  // Optional fallback model is only used if explicitly passed by caller
+  // Optional fallback model is used when explicitly passed by caller (separate quota pool failover)
   if (
+    canUseFallback &&
     fallbackModel &&
-    fallbackModel !== params.model &&
     !signal?.aborted &&
     (isRetryableAiError(lastError) || lastError instanceof AiTimeoutError)
   ) {
-    return runSingleAttemptWithTimeout(
-      client,
-      { ...params, model: fallbackModel },
-      timeoutMs,
-      signal
-    );
+    try {
+      return await runSingleAttemptWithTimeout(
+        client,
+        sanitizeParamsForTargetModel(params, fallbackModel),
+        timeoutMs,
+        signal
+      );
+    } catch (fallbackErr) {
+      if (extractUpstreamStatus(fallbackErr) === 429) {
+        markModelRateLimited(
+          fallbackModel,
+          extractRetryDelayMs(fallbackErr),
+          now()
+        );
+      }
+      throw fallbackErr;
+    }
   }
 
   throw lastError;
 }
 
 export type AiErrorCode =
+  | 'AUTH_REQUIRED'
+  | 'RATE_LIMIT_EXCEEDED'
   | 'INVALID_REQUEST'
   | 'INVALID_FILE_TYPE'
   | 'FILE_TOO_LARGE'
@@ -521,8 +698,10 @@ export function mapAiErrorToHttpResponse(
   routeLabel: string,
   fallbackBengaliMessage?: string
 ): NextResponse {
-  console.error(`[${routeLabel}] failed:`, error);
   const sanitized = classifyAiError(error, fallbackBengaliMessage);
+  if (sanitized.status >= 500) {
+    console.error(`[${routeLabel}] failed:`, error);
+  }
 
   const headers: HeadersInit = {};
   if (sanitized.retryAfterSeconds) {
@@ -559,8 +738,8 @@ export async function generateEmbedding768(
       return values;
     }
     return null;
-  } catch (error) {
-    console.error('Embedding generation failed:', error);
+  } catch {
+    // Best-effort embedding: lexical RAG handles search seamlessly when embeddings are unavailable
     return null;
   }
 }

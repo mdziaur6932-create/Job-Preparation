@@ -6,6 +6,7 @@ import type {
   Question,
   QuestionEvaluation,
 } from '../types/system';
+import { parseWrittenQuestionStructure } from './job-exam-paper';
 
 export interface WrittenGradeOverride {
   questionId: number;
@@ -13,6 +14,7 @@ export interface WrittenGradeOverride {
   mistakeExplanation: string;
   improvementTip: string;
   modelAnswer?: string;
+  transcribedAnswer?: string;
 }
 
 export interface ScoredExamResult {
@@ -96,11 +98,13 @@ export function scoreExamAttempt(
   for (const q of examQuestions) {
     const draft = answers[String(q.id)] ?? {};
     const isMcq = q.questionType === 'MCQ';
-    const maxMarks = isMcq
-      ? exam.marksPerQuestion
-      : q.questionType === 'Short'
+    const defaultWrittenMax =
+      q.questionType === 'Short'
         ? Math.max(2, exam.marksPerQuestion * 2)
         : Math.max(5, exam.marksPerQuestion * 5);
+    const maxMarks = isMcq
+      ? exam.marksPerQuestion
+      : parseWrittenQuestionStructure(q.stem, defaultWrittenMax).marks;
 
     totalMarks += maxMarks;
 
@@ -187,10 +191,15 @@ export function scoreExamAttempt(
       }
     } else {
       writtenMaxTotal += maxMarks;
-      const text = (draft.writtenText ?? '').trim();
+      const rawText = (draft.writtenText ?? '').trim();
       const override = overrideMap.get(q.id);
+      const text =
+        rawText ||
+        (override?.transcribedAnswer
+          ? `[হাতে লেখা খাতা থেকে AI OCR]\n${override.transcribedAnswer.trim()}`
+          : '');
 
-      if (!text) {
+      if (!text && !override) {
         skippedCount += 1;
         chapterErrorCount.set(
           q.chapter,

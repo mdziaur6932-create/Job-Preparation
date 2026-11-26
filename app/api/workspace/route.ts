@@ -14,6 +14,16 @@ import {
 import { verifyAuthRequest } from '@/src/lib/server-auth.ts';
 import { createInitialSeedData } from '@/src/lib/seed-data';
 import { generateEmbedding768 } from '@/src/lib/gemini';
+import {
+  MIN_MEANINGFUL_TEXT_CHARS,
+  findDuplicateBookMatch,
+  isPageRangeOnlyText,
+  stripPageMarkersAndHeaders,
+} from '@/src/lib/pdf-rules';
+import {
+  isValidDriveId,
+  isValidDriveWebViewLink,
+} from '@/src/lib/google-drive';
 import type {
   BookCategory,
   DifficultyLevel,
@@ -78,6 +88,9 @@ async function loadUserWorkspace(userId: number): Promise<WorkspaceData> {
             ? b.extractionMethod
             : 'text',
         ocrCompleted: b.ocrCompleted,
+        driveFileId: b.driveFileId ?? null,
+        driveWebViewLink: b.driveWebViewLink ?? null,
+        driveFileName: b.driveFileName ?? null,
         createdAt: b.createdAt.toISOString().slice(0, 10),
         chunks: (chunksByBook.get(b.id) ?? []).sort(
           (a, z) => a.pageNumber - z.pageNumber || a.chunkIndex - z.chunkIndex
@@ -380,19 +393,11 @@ export async function POST(req: NextRequest) {
 
     switch (action) {
       case 'create_book': {
-        const [insertedBook] = await db
-          .insert(books)
-          .values({
-            userId: session.dbUserId,
-            title: String(payload.title || '').trim(),
-            author: String(payload.author || 'অজানা লেখক').trim(),
-            subject: String(payload.subject || 'সাধারণ জ্ঞান').trim(),
-            category: String(payload.category || 'BCS').trim(),
-            totalPages: Number(payload.totalPages || 1),
-            extractionMethod: String(payload.extractionMethod || 'text'),
-            ocrCompleted: Boolean(payload.ocrCompleted),
-          })
-          .returning();
+        const cleanTitle = String(payload.title || '').trim();
+        const cleanSubject = String(payload.subject || '').trim();
+        const cleanAuthor = String(payload.author || 'অজানা লেখক').trim();
+        const cleanCategory = String(payload.category || 'BCS').trim();
+        const cleanTotalPages = Math.max(1, Math.trunc(Number(payload.totalPages || 1)));
 
         const rawChunks: Array<{
           chapter: string;
@@ -400,6 +405,81 @@ export async function POST(req: NextRequest) {
           chunkIndex: number;
           content: string;
         }> = Array.isArray(payload.chunks) ? payload.chunks : [];
+
+        const combinedChunkText = rawChunks
+          .map((ch) => String(ch.content || '').trim())
+          .filter(Boolean)
+          .join('\n\n');
+
+        if (!cleanTitle || !cleanSubject) {
+          return NextResponse.json(
+            { error: 'বইয়ের নাম এবং বিষয় অবশ্যই উল্লেখ করতে হবে।' },
+            { status: 400 }
+          );
+        }
+
+        if (
+          rawChunks.length === 0 ||
+          isPageRangeOnlyText(combinedChunkText) ||
+          stripPageMarkersAndHeaders(combinedChunkText).length < MIN_MEANINGFUL_TEXT_CHARS
+        ) {
+          return NextResponse.json(
+            {
+              error:
+                'বইয়ের মূল পাঠ্য অসম্পূর্ণ বা শুধুমাত্র পৃষ্ঠা রেঞ্জ (যেমন: "Page 37-44") হিসেবে পাওয়া গেছে। প্রকৃত বিষয়বস্তু ছাড়া সংরক্ষণ করা যাবে না।',
+            },
+            { status: 400 }
+          );
+        }
+
+        // Prevent duplicate Knowledge Base book records on retry/double-submit
+        const existingWorkspace = await loadUserWorkspace(session.dbUserId);
+        const duplicateBook = findDuplicateBookMatch(existingWorkspace.books, {
+          title: cleanTitle,
+          subject: cleanSubject,
+          totalPages: cleanTotalPages,
+          chunks: rawChunks.map((ch) => ({
+            pageNumber: Number(ch.pageNumber || 1),
+            content: String(ch.content || ''),
+          })),
+        });
+        if (duplicateBook) {
+          return NextResponse.json({
+            workspace: existingWorkspace,
+            duplicateSkipped: true,
+            bookId: duplicateBook.id,
+          });
+        }
+
+        const safeDriveFileId = isValidDriveId(payload.driveFileId)
+          ? String(payload.driveFileId).trim()
+          : null;
+        const safeDriveWebViewLink = isValidDriveWebViewLink(
+          payload.driveWebViewLink
+        )
+          ? String(payload.driveWebViewLink).trim()
+          : null;
+        const safeDriveFileName =
+          safeDriveFileId && typeof payload.driveFileName === 'string'
+            ? payload.driveFileName.trim().slice(0, 180) || null
+            : null;
+
+        const [insertedBook] = await db
+          .insert(books)
+          .values({
+            userId: session.dbUserId,
+            title: cleanTitle,
+            author: cleanAuthor,
+            subject: cleanSubject,
+            category: cleanCategory,
+            totalPages: cleanTotalPages,
+            extractionMethod: String(payload.extractionMethod || 'text'),
+            ocrCompleted: Boolean(payload.ocrCompleted),
+            driveFileId: safeDriveFileId,
+            driveWebViewLink: safeDriveWebViewLink,
+            driveFileName: safeDriveFileName,
+          })
+          .returning();
 
         // Store chunks with real 768-dim pgvector embeddings (best-effort embedding)
         for (let i = 0; i < rawChunks.length; i++) {
@@ -416,6 +496,40 @@ export async function POST(req: NextRequest) {
             embedding: emb,
           });
         }
+        break;
+      }
+
+      case 'update_book_drive': {
+        const bookId = Number(payload.id);
+        if (!Number.isInteger(bookId) || bookId <= 0) {
+          return NextResponse.json(
+            { error: 'সঠিক বইয়ের আইডি পাওয়া যায়নি।' },
+            { status: 400 }
+          );
+        }
+        const safeDriveFileId = isValidDriveId(payload.driveFileId)
+          ? String(payload.driveFileId).trim()
+          : null;
+        const safeDriveWebViewLink = isValidDriveWebViewLink(
+          payload.driveWebViewLink
+        )
+          ? String(payload.driveWebViewLink).trim()
+          : null;
+        const safeDriveFileName =
+          safeDriveFileId && typeof payload.driveFileName === 'string'
+            ? payload.driveFileName.trim().slice(0, 180) || null
+            : null;
+
+        await db
+          .update(books)
+          .set({
+            driveFileId: safeDriveFileId,
+            driveWebViewLink: safeDriveWebViewLink,
+            driveFileName: safeDriveFileName,
+          })
+          .where(
+            and(eq(books.id, bookId), eq(books.userId, session.dbUserId))
+          );
         break;
       }
 

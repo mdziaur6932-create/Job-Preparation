@@ -9,6 +9,7 @@ import {
   ArrowUpRight,
 } from 'lucide-react';
 import { useWorkspace } from '../WorkspaceProvider';
+import { formatAiResponseError } from '@/src/lib/ai-client';
 import { computePerformanceAnalytics } from '@/src/lib/exam-engine';
 import { rankChunksHybrid } from '@/src/lib/rag-engine';
 
@@ -22,6 +23,8 @@ export function PerformanceView() {
     data,
     setSelectedAttemptId,
     setActiveModule,
+    getAiAuthHeaders,
+    requestAiSignIn,
   } = useWorkspace();
 
   const analytics = useMemo(
@@ -52,6 +55,15 @@ export function PerformanceView() {
     if (!trimmed || sending) return;
 
     setChatError(null);
+
+    const authHeaders = await getAiAuthHeaders();
+    if (!authHeaders) {
+      requestAiSignIn(
+        assistantMode === 'viva' ? 'AI ভাইভা বোর্ড পরীক্ষক' : 'ব্যক্তিগত AI শিক্ষক'
+      );
+      return;
+    }
+
     const nextHistory: ChatMessage[] = [
       ...messages,
       { role: 'user', text: trimmed },
@@ -64,7 +76,10 @@ export function PerformanceView() {
       const relevantChunks = rankChunksHybrid(allChunks, trimmed, { topK: 4 });
       const res = await fetch('/api/ai/tutor', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...authHeaders,
+        },
         body: JSON.stringify({
           mode: assistantMode,
           message: trimmed,
@@ -77,9 +92,16 @@ export function PerformanceView() {
           })),
         }),
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(json.error || 'AI উত্তর দিতে পারেনি।');
+        if (res.status === 401) {
+          requestAiSignIn(
+            assistantMode === 'viva' ? 'AI ভাইভা বোর্ড পরীক্ষক' : 'ব্যক্তিগত AI শিক্ষক'
+          );
+        }
+        throw new Error(
+          formatAiResponseError(res.status, json, 'AI উত্তর দিতে পারেনি।')
+        );
       }
       setMessages((prev) => [
         ...prev,

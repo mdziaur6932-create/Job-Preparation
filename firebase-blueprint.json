@@ -1,0 +1,478 @@
+{
+  "entities": {
+    "UserPrivateProfile": {
+      "title": "User Private Profile",
+      "description": "Private user study preferences and PII isolated under the authenticated user's private profile document.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "description": "Firebase Auth UID of the profile owner.",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "displayName": {
+          "type": "string",
+          "description": "Display name shown in the user's study workspace.",
+          "maxLength": 120
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "Verified account email isolated in private subcollection.",
+          "maxLength": 254
+        },
+        "targetExam": {
+          "type": "string",
+          "description": "User's active target exam goal.",
+          "maxLength": 160
+        },
+        "driveSyncEnabled": {
+          "type": "boolean",
+          "description": "Whether saving a book also syncs to the configured Google Drive folder."
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile document was created."
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Server timestamp when the profile document was last updated."
+        }
+      },
+      "required": [
+        "uid",
+        "displayName",
+        "email",
+        "targetExam",
+        "driveSyncEnabled",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StudyBookmark": {
+      "title": "Study Bookmark",
+      "description": "Real-time synced quick study highlight or bookmark owned by a single verified user.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "bookTitle": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "subject": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 120
+        },
+        "note": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 1000
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "archived"]
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        }
+      },
+      "required": [
+        "uid",
+        "bookTitle",
+        "subject",
+        "note",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BookRecord": {
+      "title": "Book Record",
+      "description": "User-owned study book metadata and optional Google Drive link.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "id": { "type": "integer" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "author": { "type": "string", "maxLength": 160 },
+        "subject": { "type": "string", "minLength": 1, "maxLength": 160 },
+        "category": {
+          "type": "string",
+          "enum": [
+            "BCS",
+            "Bank",
+            "Primary",
+            "Current GK",
+            "Previous Year",
+            "রিসেন্ট জব সলুশন",
+            "বিষয়ভিত্তিক মূল বই",
+            "অন্যান্য"
+          ]
+        },
+        "totalPages": { "type": "integer" },
+        "extractionMethod": {
+          "type": "string",
+          "enum": ["text", "ocr", "manual"]
+        },
+        "ocrCompleted": { "type": "boolean" },
+        "driveFileId": { "type": "string", "maxLength": 200 },
+        "driveWebViewLink": { "type": "string", "maxLength": 500 },
+        "driveFileName": { "type": "string", "maxLength": 200 },
+        "createdDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "id",
+        "title",
+        "author",
+        "subject",
+        "category",
+        "totalPages",
+        "extractionMethod",
+        "ocrCompleted",
+        "driveFileId",
+        "driveWebViewLink",
+        "driveFileName",
+        "createdDate",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "BookChunkRecord": {
+      "title": "Book Chunk Record",
+      "description": "Indexed text chunk belonging to a user's study book.",
+      "type": "object",
+      "properties": {
+        "uid": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[a-zA-Z0-9_\\-]+$"
+        },
+        "id": { "type": "integer" },
+        "bookId": { "type": "integer" },
+        "bookTitle": { "type": "string", "maxLength": 240 },
+        "chapter": { "type": "string", "maxLength": 240 },
+        "pageNumber": { "type": "integer" },
+        "chunkIndex": { "type": "integer" },
+        "content": { "type": "string", "minLength": 1, "maxLength": 40000 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "id",
+        "bookId",
+        "bookTitle",
+        "chapter",
+        "pageNumber",
+        "chunkIndex",
+        "content",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "QuestionRecord": {
+      "title": "Question Record",
+      "description": "User-owned MCQ, written, or short practice question.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "id": { "type": "integer" },
+        "bookId": { "type": "integer" },
+        "bookTitle": { "type": "string", "maxLength": 240 },
+        "chapter": { "type": "string", "maxLength": 240 },
+        "pageNumber": { "type": "integer" },
+        "subject": { "type": "string", "maxLength": 160 },
+        "questionType": { "type": "string", "enum": ["MCQ", "Written", "Short"] },
+        "difficulty": { "type": "string", "enum": ["Easy", "Medium", "Hard"] },
+        "stem": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "options": { "type": "array" },
+        "correctOptionIndex": { "type": "integer" },
+        "modelAnswer": { "type": "string", "maxLength": 8000 },
+        "explanation": { "type": "string", "maxLength": 8000 },
+        "isPreviousYear": { "type": "boolean" },
+        "examYear": { "type": "string", "maxLength": 40 },
+        "examSource": { "type": "string", "maxLength": 160 },
+        "importanceScore": { "type": "integer" },
+        "createdDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "id",
+        "bookTitle",
+        "chapter",
+        "pageNumber",
+        "subject",
+        "questionType",
+        "difficulty",
+        "stem",
+        "options",
+        "modelAnswer",
+        "explanation",
+        "isPreviousYear",
+        "importanceScore",
+        "createdDate",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ExamRecord": {
+      "title": "Exam Record",
+      "description": "User-owned exam configuration and in-progress draft answers.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "id": { "type": "integer" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "subject": { "type": "string", "maxLength": 160 },
+        "examMode": { "type": "string", "enum": ["MCQ", "Written", "Mixed"] },
+        "durationMinutes": { "type": "integer" },
+        "marksPerQuestion": { "type": "number" },
+        "negativeMark": { "type": "number" },
+        "questionIds": { "type": "array" },
+        "status": { "type": "string", "enum": ["draft", "in_progress", "completed"] },
+        "draftAnswers": { "type": "object" },
+        "createdDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "id",
+        "title",
+        "subject",
+        "examMode",
+        "durationMinutes",
+        "marksPerQuestion",
+        "negativeMark",
+        "questionIds",
+        "status",
+        "draftAnswers",
+        "createdDate",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "ExamAttemptRecord": {
+      "title": "Exam Attempt Record",
+      "description": "Immutable completed exam evaluation record owned by a single user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "id": { "type": "integer" },
+        "examId": { "type": "integer" },
+        "examTitle": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "subject": { "type": "string", "maxLength": 160 },
+        "totalMarks": { "type": "number" },
+        "obtainedMarks": { "type": "number" },
+        "negativeDeduction": { "type": "number" },
+        "correctCount": { "type": "integer" },
+        "wrongCount": { "type": "integer" },
+        "skippedCount": { "type": "integer" },
+        "mcqAccuracy": { "type": "number" },
+        "writtenScore": { "type": "number" },
+        "durationSeconds": { "type": "integer" },
+        "evaluations": { "type": "array" },
+        "weakTopics": { "type": "array" },
+        "aiRecommendation": { "type": "string", "maxLength": 8000 },
+        "submittedAtIso": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "id",
+        "examTitle",
+        "subject",
+        "totalMarks",
+        "obtainedMarks",
+        "negativeDeduction",
+        "correctCount",
+        "wrongCount",
+        "skippedCount",
+        "mcqAccuracy",
+        "writtenScore",
+        "durationSeconds",
+        "evaluations",
+        "weakTopics",
+        "aiRecommendation",
+        "submittedAtIso",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MistakeRecord": {
+      "title": "Mistake Record",
+      "description": "Mistake notebook item tracked for spaced revision.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "id": { "type": "integer" },
+        "questionId": { "type": "integer" },
+        "attemptId": { "type": "integer" },
+        "questionStem": { "type": "string", "minLength": 1, "maxLength": 4000 },
+        "subject": { "type": "string", "maxLength": 160 },
+        "chapter": { "type": "string", "maxLength": 240 },
+        "userAnswer": { "type": "string", "maxLength": 4000 },
+        "correctAnswer": { "type": "string", "maxLength": 4000 },
+        "reason": { "type": "string", "maxLength": 4000 },
+        "mastered": { "type": "boolean" },
+        "reviewCount": { "type": "integer" },
+        "nextReviewDate": { "type": "string", "maxLength": 32 },
+        "createdDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "id",
+        "questionStem",
+        "subject",
+        "chapter",
+        "userAnswer",
+        "correctAnswer",
+        "reason",
+        "mastered",
+        "reviewCount",
+        "nextReviewDate",
+        "createdDate",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "CurrentGkRecord": {
+      "title": "Current GK Record",
+      "description": "Current affairs note tracked by the user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "id": { "type": "integer" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "summary": { "type": "string", "maxLength": 6000 },
+        "category": { "type": "string", "maxLength": 120 },
+        "eventDate": { "type": "string", "maxLength": 32 },
+        "source": { "type": "string", "maxLength": 200 },
+        "isArchived": { "type": "boolean" },
+        "convertedToQuestions": { "type": "boolean" },
+        "createdDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "id",
+        "title",
+        "summary",
+        "category",
+        "eventDate",
+        "source",
+        "isArchived",
+        "convertedToQuestions",
+        "createdDate",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "StudyTaskRecord": {
+      "title": "Study Task Record",
+      "description": "Study planner task scheduled by the user.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "id": { "type": "integer" },
+        "title": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "subject": { "type": "string", "maxLength": 160 },
+        "chapter": { "type": "string", "maxLength": 240 },
+        "taskType": { "type": "string", "enum": ["reading", "revision", "practice", "exam"] },
+        "scheduledDate": { "type": "string", "maxLength": 32 },
+        "durationMinutes": { "type": "integer" },
+        "completed": { "type": "boolean" },
+        "createdDate": { "type": "string", "maxLength": 32 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "uid",
+        "id",
+        "title",
+        "subject",
+        "chapter",
+        "taskType",
+        "scheduledDate",
+        "durationMinutes",
+        "completed",
+        "createdDate",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateProfile" },
+      "description": "Isolated private profile document (docId='profile') storing owner-only PII and preferences."
+    },
+    "/users/{userId}/studyBookmarks/{bookmarkId}": {
+      "schema": { "$ref": "#/entities/StudyBookmark" },
+      "description": "User-owned real-time synced study bookmarks."
+    },
+    "/users/{userId}/books/{bookId}": {
+      "schema": { "$ref": "#/entities/BookRecord" },
+      "description": "User-owned study book metadata and Drive file linkage."
+    },
+    "/users/{userId}/bookChunks/{chunkId}": {
+      "schema": { "$ref": "#/entities/BookChunkRecord" },
+      "description": "Chunked book chapters/pages for Knowledge Base and RAG reader."
+    },
+    "/users/{userId}/questions/{questionId}": {
+      "schema": { "$ref": "#/entities/QuestionRecord" },
+      "description": "User-owned question bank entries."
+    },
+    "/users/{userId}/exams/{examId}": {
+      "schema": { "$ref": "#/entities/ExamRecord" },
+      "description": "User-owned custom exams and saved draft answers."
+    },
+    "/users/{userId}/attempts/{attemptId}": {
+      "schema": { "$ref": "#/entities/ExamAttemptRecord" },
+      "description": "Completed exam evaluation records."
+    },
+    "/users/{userId}/mistakes/{mistakeId}": {
+      "schema": { "$ref": "#/entities/MistakeRecord" },
+      "description": "Mistake notebook records for spaced revision."
+    },
+    "/users/{userId}/gkItems/{itemId}": {
+      "schema": { "$ref": "#/entities/CurrentGkRecord" },
+      "description": "Current affairs notes."
+    },
+    "/users/{userId}/studyTasks/{taskId}": {
+      "schema": { "$ref": "#/entities/StudyTaskRecord" },
+      "description": "Study planner tasks."
+    }
+  }
+}
